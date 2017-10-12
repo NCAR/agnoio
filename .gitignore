@@ -1,0 +1,63 @@
+*sedbak
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+#Golang specifics
+
+# Folders
+_obj
+_test
+
+# Architecture specific extensions/prefixes
+*.[568vq]
+[568vq].out
+desktop.ini
+.DS_Store
+
+*.cgo1.go
+*.cgo2.c
+_cgo_defun.c
+_cgo_gotypes.go
+_cgo_export.*
+
+_testmain.go
+
+*.exe
+*.test
+*.prof
+
+#generated files
+*_gen.go
+#databases
+*.db
+*.sublime-workspace
+#batch scripts
+*.bat
+cover.out
+cover.html
+.cache
+.cache.lock
+.log
+*.bak
