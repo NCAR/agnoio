@@ -28,6 +28,7 @@ import (
 	"context"
 	"net"
 	"testing"
+	"time"
 )
 
 type respHandler func(*testing.T, net.Conn)
@@ -51,8 +52,9 @@ func newTCPSvr(ctx context.Context, t *testing.T, proto string, addr string, han
 	svr, err := net.Listen(proto, addr)
 
 	if err != nil {
+		t.Error(err)
 		t.Error("Unable to start server")
-		t.FailNow()
+		panic(err)
 	}
 	t.Log("Listening on ", proto, addr)
 	go func() {
@@ -76,15 +78,15 @@ func newTCPSvr(ctx context.Context, t *testing.T, proto string, addr string, han
 func TestNewNetClient(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if _, err := NewIDoIO(ctx, 0, "bad hair day"); err == nil {
+	if _, err := NewIDoIO(ctx, 1*time.Millisecond, "bad hair day"); err == nil {
 		t.Error("Bad dial string should fail")
 	}
-	if _, err := NewNetClient(ctx, 0, "tcp://bad-hair-day"); err == nil {
+	if _, err := NewNetClient(ctx, 1*time.Millisecond, "tcp://bad-hair-day"); err == nil {
 		t.Error("Bad dial string should fail")
 	}
 	newTCPSvr(ctx, t, "tcp4", "localhost:5000", echoHandler)
 
-	nc, err := NewIDoIO(ctx, 0, "tcp4://localhost:5000")
+	nc, err := NewIDoIO(ctx, 1*time.Millisecond, "tcp4://localhost:5000")
 	_ = nc.String()
 	if err != nil {
 		t.Error("Shouldnt get an error")
