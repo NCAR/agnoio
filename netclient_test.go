@@ -94,7 +94,7 @@ func TestNewNetClient(t *testing.T) {
 		t.Error("Bad dial string should fail")
 	}
 	port, svrdial, dial := randPortCfg()
-	t.Log("Starting server on port %d", port)
+	t.Logf("Starting server on port %d", port)
 	newTCPSvr(ctx, t, "tcp4", svrdial, echoHandler)
 
 	nc, err := NewIDoIO(ctx, 1*time.Millisecond, dial)

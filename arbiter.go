@@ -65,15 +65,18 @@ dial will need to match a known dial format, timeout will be used during the con
 process, and the ctx will be used to ensure the operation will cease if the ctx is
 stopped.*/
 func NewArbiter(ctx context.Context, timeout time.Duration, dial string) (Arbiter, error) {
-	arbctx, cancelfunc := context.WithCancel(ctx)
-
 	idotoo, err := NewIDoIO(ctx, timeout, dial)
-	a := &Arb{
-		ctx:    arbctx,
-		cancel: cancelfunc,
-		idotoo: idotoo,
-	}
-	return a, err
+	arb, _ := Arbitrate(ctx, idotoo)
+	return arb, err
+}
+
+/*Arbitrate returns an Arbiter and a context.CancelFunc.  This is meant to be a
+temporary solution, where the arbiter is meant to be used for a short duration
+and then revert to using the IDoIO. The CancelFunc should be called whenever
+the caller is done using the Arbiter Functionally (eg, .Control).*/
+func Arbitrate(ctx context.Context, idoio IDoIO) (Arbiter, context.CancelFunc) {
+	arbctx, cancelfunc := context.WithCancel(ctx)
+	return &Arb{ctx: arbctx, idotoo: idoio, cancel: cancelfunc}, cancelfunc
 }
 
 /*Arb is a wrapper over a IDoIO, but it lockes the IDoIO under a mutex to
