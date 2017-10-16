@@ -26,6 +26,8 @@ package agnoio
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"net"
 	"testing"
 	"time"
@@ -45,6 +47,13 @@ func echoHandler(t *testing.T, con net.Conn) {
 		}
 		con.Write(buf[0:reqLen])
 	}
+}
+
+func randPortCfg() (port int, svr string, dial string) {
+	port = rand.Intn(4000) + 2000
+	svr = fmt.Sprintf("localhost:%d", port)
+	dial = fmt.Sprintf("tcp://localhost:%d", port)
+	return
 }
 
 func newTCPSvr(ctx context.Context, t *testing.T, proto string, addr string, handler respHandler) {
@@ -84,9 +93,11 @@ func TestNewNetClient(t *testing.T) {
 	if _, err := NewNetClient(ctx, 1*time.Millisecond, "tcp://bad-hair-day"); err == nil {
 		t.Error("Bad dial string should fail")
 	}
-	newTCPSvr(ctx, t, "tcp4", "localhost:5000", echoHandler)
+	port, svrdial, dial := randPortCfg()
+	t.Log("Starting server on port %d", port)
+	newTCPSvr(ctx, t, "tcp4", svrdial, echoHandler)
 
-	nc, err := NewIDoIO(ctx, 1*time.Millisecond, "tcp4://localhost:5000")
+	nc, err := NewIDoIO(ctx, 1*time.Millisecond, dial)
 	_ = nc.String()
 	if err != nil {
 		t.Error("Shouldnt get an error")

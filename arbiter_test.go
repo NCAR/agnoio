@@ -28,7 +28,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"regexp"
 	"time"
@@ -53,9 +52,6 @@ func arbHandler(t *testing.T, con net.Conn) {
 		case nil:
 			// fmt.Printf("\t\tarbHandler>> Got %q - Writing 'Rxd>%d'\n", string(buf[0:reqLen]), reqLen)
 			fmt.Fprintf(con, "Rxd>%d", reqLen)
-		case io.EOF:
-			// fmt.Println("\t\tarbHandler>> EOF")
-			return
 		default:
 			// fmt.Println("\t\tarbHandler>> ", err)
 			return
@@ -67,9 +63,10 @@ func TestArb(t *testing.T) {
 	//startup TCP server
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go newTCPSvr(ctx, t, "tcp", "localhost:5003", arbHandler)
+	_, svrdial, dial := randPortCfg()
+	go newTCPSvr(ctx, t, "tcp", svrdial, arbHandler)
 
-	a, e := NewArbiter(ctx, 500*time.Millisecond, "tcp://localhost:5003")
+	a, e := NewArbiter(ctx, 500*time.Millisecond, dial)
 	if a == nil || e != nil {
 		t.Log("Arb: ", a)
 		t.Log("Err: ", e)
@@ -141,8 +138,9 @@ var arbCmdBad, arbCmdOk, arbCmdError, arbCmdTimeout = Command{
 func TestArb_Control(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go newTCPSvr(ctx, t, "tcp", "localhost:5002", arbHandler)
-	a, e := NewArbiter(ctx, 500*time.Millisecond, "tcp://localhost:5002")
+	_, srvdial, dial := randPortCfg()
+	go newTCPSvr(ctx, t, "tcp", srvdial, arbHandler)
+	a, e := NewArbiter(ctx, 500*time.Millisecond, dial)
 	if e != nil {
 		t.Error("Unable to dial", e)
 	}
@@ -184,5 +182,52 @@ func TestArb_Control(t *testing.T) {
 		t.Error("Expected a non-nill error due to a timeout")
 		t.FailNow()
 	}
+}
 
+/*The following checks broken contexts - which are a bit simpler, but trickier,
+to fully validate*/
+func TestArb_Contexts(t *testing.T) {
+	_, srvdial, dial := randPortCfg()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go newTCPSvr(ctx, t, "tcp", srvdial, arbHandler)
+
+	//manually create an arbiter:
+	arbctx, arbcncl := context.WithCancel(ctx)
+	defer arbcncl() //make sure we call this
+	idoctx, idocncl := context.WithCancel(ctx)
+	defer idocncl() //make sure we call this
+
+	idotoo, err := NewIDoIO(idoctx, 10*time.Millisecond, dial)
+	if err != nil {
+		t.Error("Unable to create idotoo in order to check context failures")
+	}
+	arb := &Arb{
+		ctx:    arbctx,
+		cancel: arbcncl,
+		idotoo: idotoo,
+	}
+	defer arb.Close()
+
+	//kill arbcncl and get through the select catches
+	arbcncl()
+	if resp := arb.Control(arbCmdTimeout); resp.Error == nil || !bytes.Equal([]byte{}, resp.Bytes) || resp.Duration > 20*time.Millisecond {
+		t.Log("Bytes should be [], is", resp.Bytes, bytes.Equal([]byte{}, resp.Bytes))
+		t.Log("Duration should < 20ms, is", resp.Duration)
+		t.Errorf("Select on cancelled ctx should return quickly")
+	}
+
+	//now, kill idotoo's contrxt, which should fail writes
+	idocncl()
+	if resp := arb.Control(arbCmdTimeout); resp.Error == nil || !bytes.Equal([]byte{}, resp.Bytes) || resp.Duration > 20*time.Millisecond {
+		t.Log("Bytes should be [], is", resp.Bytes, bytes.Equal([]byte{}, resp.Bytes))
+		t.Log("Duration should < 20ms, is", resp.Duration)
+		t.Errorf("SHould get an error when trying to send")
+	}
+
+	//ditto on waitForResponse
+	dc := make(chan cr, 0)
+	go arb.waitForResponse(dc, arbCmdTimeout)
+	cancel()
+	<-dc
 }
