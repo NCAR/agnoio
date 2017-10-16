@@ -29,7 +29,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"sync"
 	"time"
 
@@ -90,7 +89,6 @@ type Arb struct {
 locked within a mutex, and the read and write channels are linked*/
 func (a *Arb) String() string {
 	return fmt.Sprintf("Arbiter over %s", a.idotoo.String())
-
 }
 
 /*Open conforms to IDoIO, but for an Arbiter.  Unlike a regular IDoIO, access is
@@ -144,16 +142,11 @@ func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
 		return Response{Error: err}
 	}
 
-	select { //check if the ctx has been killed - this is probably not needed here
-	case <-a.ctx.Done():
-		return Response{Error: a.ctx.Err()}
-	default:
-	}
-
 	//clear off any internal buffer
-	buf := make([]byte, 4096)
+	rdr := bufio.NewReader(a.idotoo)
 	for {
-		if read, err := a.idotoo.Read(buf); read == 0 || err == io.EOF {
+		_, e := rdr.ReadByte()
+		if e != nil {
 			break
 		}
 	}
@@ -165,14 +158,13 @@ func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
 
 	//creating data channel for communicating with reader
 	dataChan := make(chan cr, 0)
-	// defer close(dataChan)
 	go a.waitForResponse(dataChan, cmd)
 
 	select { //block until our context is killed, or we get a response
 	case <-a.ctx.Done():
 		return Response{Error: a.ctx.Err()}
-	case cr := <-dataChan:
-		return Response{Error: cr.e, Bytes: cr.b}
+	case respData := <-dataChan:
+		return Response{Error: respData.e, Bytes: respData.b}
 	}
 }
 
@@ -184,41 +176,39 @@ type cr struct {
 
 /*waitForResponse repeatedly reads from the IDoIO waiting for a response, and */
 func (a *Arb) waitForResponse(dataChan chan<- cr, cmd Command) {
-	//read from stdin
+	timeoutctx, cancel := context.WithTimeout(a.ctx, cmd.Timeout)
 	defer close(dataChan)
-	ctx, cancel := context.WithTimeout(a.ctx, cmd.Timeout)
 	defer cancel()
 	rcvd, buf := bytes.NewBuffer(nil), bufio.NewReader(a.idotoo)
+
 	for {
 		select {
 		case <-a.ctx.Done(): //context chain has collapsed
 			dataChan <- cr{e: errors.Wrap(a.ctx.Err(), "Arbiter's context chain has collapsed"), b: rcvd.Bytes()}
 			return
-		case <-ctx.Done(): //timeout
-			dataChan <- cr{e: errors.Wrap(ctx.Err(), "Command timed out before receiving the proper response"), b: rcvd.Bytes()}
+		case <-timeoutctx.Done(): //timeout
+			dataChan <- cr{e: errors.Wrap(timeoutctx.Err(), "Command timed out before receiving the proper response"), b: rcvd.Bytes()}
 			return
-		case <-time.After(1 * time.Millisecond): //dont spin forever
-		default:
+		case <-time.After(1 * time.Millisecond):
+			// default:
 		}
 
-		//drain bufio
 		for {
 			b, e := buf.ReadByte()
-			if e != nil {
+			if e == nil {
+				rcvd.WriteByte(b)
+			} else {
 				break
 			}
-			rcvd.WriteByte(b)
 		}
 
 		raw := rcvd.Bytes()
 		if cmd.Error != nil && cmd.Error.Match(raw) { //check for error response
-			cancel()
-			dataChan <- cr{e: errors.Wrap(ctx.Err(), "Command timed out before receiving the proper response"), b: raw}
+			dataChan <- cr{e: errors.New("Command received error response"), b: raw}
 			return
 		}
 
 		if cmd.Response.Match(raw) { //check for normal acceptable response
-			cancel()
 			dataChan <- cr{e: nil, b: raw}
 			return
 		}
