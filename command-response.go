@@ -107,29 +107,41 @@ func (c Command) String() string {
 	return fmt.Sprintf("%s: %v Prototype:%q CommandRegexp:%q Expect:%q Error:%q", c.Name, c.Timeout, sanitize(c.Prototype), sanitize(c.CommandRegexp), sanitize(c.Response), sanitize(c.Error))
 }
 
-//ErrBytesArgs is returned when calling Bytes if any of the following occur:
-//	Wrong Number of args (too few / many)
-//	Wrong order (ie Command.Prototype is "%s %d" and provided args are '24, "string"'')
-//	Wrong types (ie Command.Prototype is "%s" and provided arg is '25')
-var ErrBytesArgs = fmt.Errorf("Proper arguments not provided to expand command into bytes")
+var (
+	//ErrBytesArgs is returned when calling Bytes if any of the following occur:
+	//	Wrong Number of args (too few / many)
+	//	Wrong order (ie Command.Prototype is "%s %d" and provided args are '24, "string"'')
+	//	Wrong types (ie Command.Prototype is "%s" and provided arg is '25')
+	ErrBytesArgs = fmt.Errorf("Proper arguments not provided to expand command into bytes")
 
-//ErrBytesFormat is returned when the args used to populate the command are forming an invalid command
-var ErrBytesFormat = fmt.Errorf("Formed command does not match allowable format for outgoing commands")
+	//ErrBytesFormat is returned when the args used to populate the command are forming an invalid command
+	ErrBytesFormat = fmt.Errorf("Formed command does not match allowable format for outgoing commands")
+)
 
-/*Bytes returnes the raw bytes that should be sent to the interface based on the Command.Prototype and
-any optional arguments passed to it. It will return a byte slice and one of the following errors:
+/*Bytes returnes the raw bytes that should be sent to the interface based on the
+Command.Prototype and any optional arguments passed to it via
+  fmt.Sprintf(.Prototype, v...)
+If the resulting string formed by above contains any "%!" sequences, then this
+assumes that the formed command was not properly fed through fmt.Sprintf, and will
+return the package error ErrBytesArgs. This currently does not allow for embeded "#!"
+sequences, which should be fixed via lexical analysis
 
-	ErrBytesArgs if either too many, not enough, or the wrong type of args are provided
-	ErrBytesFormat if the assembled byte slice does not match the required Command.CommandRegexp
-	nil if a byte slice was successfully formed
+If .CommandRegexp is nil, it is assumed that any command formed (sans the above rule)
+is acceptable.  If not, the formed command is compared against CommandRegexp.  If
+the fomed command does not match, the package error ErrBytesFormat is returned.
+
+If all goes well, a byte slice to be sent down the line and a nil error is returned.
+
+BUG: Current implementation disallows handling of commands with "%!" sequences
 */
 func (c Command) Bytes(v ...interface{}) ([]byte, error) {
 	str := fmt.Sprintf(c.Prototype, v...)
+	//checking for wrong, or invalid arguments
 	if strings.Contains(str, "%!") {
 		return []byte(str), ErrBytesArgs
 	}
 	//make sure whatever we stuffed matches the provided regexp
-	if !c.CommandRegexp.MatchString(str) {
+	if c.CommandRegexp != nil && !c.CommandRegexp.MatchString(str) {
 		return []byte(str), ErrBytesFormat
 	}
 	return []byte(str), nil

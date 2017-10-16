@@ -129,9 +129,14 @@ func (a *Arb) Write(b []byte) (int, error) {
 /*Control conforms to Arbiter interface, but this implementation uses a IDoIO to
 handles the data. Control is the reason that serialzed access is required:  when
 Commands are sent, Control needs to read all the incoming data while Checking
-for a valid Response.  Generally, the steps are something like the following:
+for a valid Response.
 
-1) Render bytes
+If .CommandRegexp is nil, whatever command is formed is not checked for
+completeness (see Command.Bytes) If .Error is nil (not set), then the output is
+not compared for an error condition, and the command will only succeed or
+timeout. If .Response is nil (not set), then the output is not compared for an
+positive repsonse, and Command will only fail or timeout.  If bother .Error and
+.Response are nil, this command will only timeout.
 */
 func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
 	a.mux.Lock()
@@ -211,7 +216,7 @@ func (a *Arb) waitForResponse(dataChan chan<- cr, cmd Command) {
 			return
 		}
 
-		if cmd.Response.Match(raw) { //check for normal acceptable response
+		if cmd.Response != nil && cmd.Response.Match(raw) { //check for normal acceptable response
 			dataChan <- cr{e: nil, b: raw}
 			return
 		}
