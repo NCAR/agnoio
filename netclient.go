@@ -105,7 +105,9 @@ func (nc *NetClient) Read(b []byte) (int, error) {
 	case <-nc.ctx.Done():
 		return 0, nc.Close()
 	default:
-		nc.conn.SetReadDeadline(time.Now().Add(nc.timeout))
+		if nc.timeout > 0 {
+			nc.conn.SetReadDeadline(time.Now().Add(nc.timeout))
+		}
 		return nc.conn.Read(b)
 	}
 }
@@ -117,7 +119,9 @@ func (nc *NetClient) Write(b []byte) (int, error) {
 	case <-nc.ctx.Done():
 		return 0, nc.Close()
 	default:
-		nc.conn.SetWriteDeadline(time.Now().Add(nc.timeout))
+		if nc.timeout > 0 {
+			nc.conn.SetWriteDeadline(time.Now().Add(nc.timeout))
+		}
 		return nc.conn.Write(b)
 	}
 }
