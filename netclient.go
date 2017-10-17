@@ -81,10 +81,13 @@ attempts the connect process again.  It returns an error if it was unable to sta
 func (nc *NetClient) Open() (err error) {
 	select {
 	case <-nc.ctx.Done():
-		return nc.Close()
+		return nc.ctx.Err()
 	default:
 	}
-	nc.Close()
+	if nc.conn != nil {
+		nc.conn.Close()
+		nc.conn = nil
+	}
 	dialer := net.Dialer{
 		Timeout: nc.timeout,
 		// Deadline:
@@ -103,9 +106,12 @@ destruction after closing the underling transport*/
 func (nc *NetClient) Read(b []byte) (int, error) {
 	select {
 	case <-nc.ctx.Done():
-		return 0, nc.Close()
+		defer nc.Close()
+		return 0, nc.ctx.Err()
 	default:
-		nc.conn.SetReadDeadline(time.Now().Add(nc.timeout))
+		if nc.timeout > 0 {
+			nc.conn.SetReadDeadline(time.Now().Add(nc.timeout))
+		}
 		return nc.conn.Read(b)
 	}
 }
@@ -115,9 +121,12 @@ destruction after closing the underling transport*/
 func (nc *NetClient) Write(b []byte) (int, error) {
 	select {
 	case <-nc.ctx.Done():
-		return 0, nc.Close()
+		defer nc.Close()
+		return 0, nc.ctx.Err()
 	default:
-		nc.conn.SetWriteDeadline(time.Now().Add(nc.timeout))
+		if nc.timeout > 0 {
+			nc.conn.SetWriteDeadline(time.Now().Add(nc.timeout))
+		}
 		return nc.conn.Write(b)
 	}
 }
