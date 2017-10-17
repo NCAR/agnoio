@@ -89,9 +89,11 @@ func TestNewNetClient(t *testing.T) {
 	defer cancel()
 	if _, err := NewIDoIO(ctx, 1*time.Millisecond, "bad hair day"); err == nil {
 		t.Error("Bad dial string should fail")
+		t.FailNow()
 	}
 	if _, err := NewNetClient(ctx, 1*time.Millisecond, "tcp://bad-hair-day"); err == nil {
 		t.Error("Bad dial string should fail")
+		t.FailNow()
 	}
 	port, svrdial, dial := randPortCfg()
 	t.Logf("Starting server on port %d", port)
@@ -101,6 +103,7 @@ func TestNewNetClient(t *testing.T) {
 	_ = nc.String()
 	if err != nil {
 		t.Error("Shouldnt get an error")
+		t.FailNow()
 	}
 
 	//Write some garbage
@@ -109,6 +112,7 @@ func TestNewNetClient(t *testing.T) {
 		t.Log("Wanted to write", len(msg), "bytes, wrote", n)
 		t.Log("Error was ", e)
 		t.Error("Write is borked")
+		t.FailNow()
 	}
 
 	read := make([]byte, 1024)
@@ -116,6 +120,7 @@ func TestNewNetClient(t *testing.T) {
 		t.Log("Wanted to read", len(msg), "bytes, only read", n)
 		t.Log("Error was ", e)
 		t.Error("Read is borked")
+		t.FailNow()
 	}
 
 	for i := 0; i < 10; i++ {
@@ -128,16 +133,19 @@ func TestNewNetClient(t *testing.T) {
 		t.Log("Wanted to write 0 bytes, wrote", n)
 		t.Log("Error was nil")
 		t.Error("Write is borked")
+		t.FailNow()
 	}
 
 	if n, e := nc.Read(read); e == nil || n != 0 {
 		t.Log("Wanted to read 0 bytes, read", n)
 		t.Log("Error was nil")
 		t.Error("Read is borked")
+		t.FailNow()
 	}
 	//attempt reopen on dead context
 
 	if err := nc.Open(); err == nil {
 		t.Error("Should always get an error on a dead context")
+		t.FailNow()
 	}
 }
