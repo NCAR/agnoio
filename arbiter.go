@@ -181,7 +181,7 @@ func (a *Arb) Simple(cmd, success, failure []byte, duration time.Duration) (rsp 
 	}
 
 	//creating data channel for communicating with reader
-	dataChan := make(chan cr, 0)
+	dataChan := make(chan status, 0)
 
 	cf := func(raw []byte) ExitCriteria {
 		if failure != nil && bytes.Contains(raw, failure) {
@@ -197,7 +197,7 @@ func (a *Arb) Simple(cmd, success, failure []byte, duration time.Duration) (rsp 
 
 	select { //block until our context is killed, or we get a response
 	case respData := <-dataChan:
-		return Response{Error: respData.e, Bytes: respData.b}
+		return Response{Error: respData.err, Bytes: respData.raw}
 	}
 }
 
@@ -232,7 +232,7 @@ func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
 	}
 
 	//creating data channel for communicating with reader
-	dataChan := make(chan cr, 0)
+	dataChan := make(chan status, 0)
 
 	cf := func(raw []byte) ExitCriteria {
 		if cmd.Error != nil && cmd.Error.Match(raw) { //check for error response
@@ -251,14 +251,14 @@ func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
 	// case <-a.ctx.Done():
 	// 	return Response{Error: a.ctx.Err()}
 	case respData := <-dataChan:
-		return Response{Error: respData.e, Bytes: respData.b}
+		return Response{Error: respData.err, Bytes: respData.raw}
 	}
 }
 
-/*cr is used to pass messages between Control and waitForResponse*/
-type cr struct {
-	b []byte
-	e error
+/*status is used to pass messages from readUntil back to callers.*/
+type status struct {
+	raw []byte
+	err error
 }
 
 /*readUntil repeatedly reads data off the embedded io device until either a
@@ -267,7 +267,7 @@ Caller should utilize a go-routine to issue this and should always read from
 the passed channel exactly one time, otherwise this will deadlock. This closes
 the channel on exit.
 */
-func (a *Arb) readUntil(dataChan chan<- cr, timeout time.Duration, checkFunc CheckFunc) {
+func (a *Arb) readUntil(dataChan chan<- status, timeout time.Duration, checkFunc CheckFunc) {
 	timeoutctx, cancel := context.WithTimeout(a.ctx, timeout)
 	defer close(dataChan)
 	defer cancel()
@@ -276,32 +276,29 @@ func (a *Arb) readUntil(dataChan chan<- cr, timeout time.Duration, checkFunc Che
 	for {
 		select {
 		case <-a.ctx.Done(): //context chain has collapsed
-			dataChan <- cr{e: errors.Wrap(a.ctx.Err(), "Arbiter's context chain has collapsed"), b: rcvd.Bytes()}
+			dataChan <- status{err: errors.Wrap(a.ctx.Err(), "Arbiter's context chain has collapsed"), raw: rcvd.Bytes()}
 			return
 		case <-timeoutctx.Done(): //timeout
-			dataChan <- cr{e: errors.Wrap(timeoutctx.Err(), "Command timed out before receiving the proper response"), b: rcvd.Bytes()}
+			dataChan <- status{err: errors.Wrap(timeoutctx.Err(), "Command timed out before receiving the proper response"), raw: rcvd.Bytes()}
 			return
-		case <-time.After(1 * time.Millisecond): // is this necessary?
-			// default:
 		}
 
 		for {
 			b, e := buf.ReadByte()
-			if e == nil {
-				rcvd.WriteByte(b)
-			} else {
+			if e != nil {
 				break
 			}
+			rcvd.WriteByte(b)
 		}
 
 		raw := rcvd.Bytes()
 		switch checkFunc(raw) {
 		case Insufficient: //need more data
 		case Failure: //return failure
-			dataChan <- cr{e: errors.New("Command received error response"), b: raw}
+			dataChan <- status{err: errors.New("Command received error response"), raw: raw}
 			return
 		case Success:
-			dataChan <- cr{e: nil, b: raw}
+			dataChan <- status{err: nil, raw: raw}
 		}
 	}
 }
