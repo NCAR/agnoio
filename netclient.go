@@ -36,7 +36,35 @@ var _ IDoIO = &NetClient{}
 var netClientRe = regexp.MustCompile("^(tcp|tcp4|tcp6|udp|udp4|udp6):\\/\\/(.*:[a-zA-Z0-9]*)$")
 
 /*NewNetClient opens a connection to remote tcpv4 host.
-dial should be in the form of: 'tcp|udp[46]{0,1}://<host>:<port>'*/
+dial should be in the form of: 'tcp|udp[46]{0,1}://<host>:<port>'
+
+Timeout is used a read/write timeout at the socket level. If timeout is zero,
+timeouts are not used nor applied, and any errors are due to normal socket behaviour.
+If timeout is greater than zero, a deadline is set on every Read() and Write()
+function. In this case, Read() and Write() will returns an timeout error that
+should be checked via something like the following:
+
+  io := NewNetClient(ctx, 100 * time.Millisecond, "tcp://localhost:4242")
+  ...
+  n, e := io.Write(b)
+  switch e {
+  case io.EOF: // Broken socket
+    ...
+  default:
+    if nerr, ok := e.(net.Error); ok {
+      if nerr.Temporary() { //Temporary error
+        ...
+      }
+      if nerr.Timeout() { //Timeout error from enforced deadline
+        ...
+      }
+    }
+  }
+
+The caller is responsible for handling errors. This pkg just propegates any error
+encountered.
+
+*/
 func NewNetClient(ctx context.Context, timeout time.Duration, dial string) (*NetClient, error) {
 	if !netClientRe.MatchString(dial) {
 		return nil, fmt.Errorf("dial string not in correct form")
@@ -61,6 +89,7 @@ access under the following URI Regimes:
   udp://
   udp4://
   udp6://
+
 
 */
 type NetClient struct {
