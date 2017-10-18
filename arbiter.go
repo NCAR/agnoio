@@ -35,6 +35,31 @@ import (
 	"github.com/pkg/errors"
 )
 
+/*ExitCriteria is a set of defined success criteria that CheckFunc must return*/
+type ExitCriteria int
+
+const (
+	//Insufficient should be returned if more bytes are required in order to determine success or failure
+	Insufficient ExitCriteria = 1 + iota
+
+	//Failure indicates the current set of bytes indicates an error condition
+	Failure
+
+	//Success indicates the current set of bytes indicates an accepted condition.
+	Success
+)
+
+/*CheckFunc is used to determine if the passed bytes match some success, failure,
+or insuccifient data to determine exit criteria. Only the defined ExitCriteria
+may be used - any other return value will panic.  If the CheckFunc returns
+Insufficient, it is assumed that more incoming data is required before a success
+or failure criteria can be established. If Failure is returned, it is assumed
+that the sum of the bytes demarcates a failure condition, and the calling process
+should cease reading data.  Likewise, a Success condition indicates a successful
+exit criteria, and the calling process should cease reading data and return a nil
+error.*/
+type CheckFunc func([]byte) ExitCriteria
+
 /*
 Arbiter provides a command and control interface to []byte streams. Original
 design intentions were to provide a way to communicate to devices that respond
@@ -47,6 +72,14 @@ be delt with*/
 type Arbiter interface {
 	IDoIO //I Do Too
 
+	/*Simple is a very simple form of command and control.  It sends out cmd,
+	making sure all the bytes get pushed out, and the constantly reads the incoming
+	data for any a sequence that contains either 'ok' or 'failure' before timing
+	out at the passed duration. The returned response contains the duration,
+	the bytes received, and an error, which is nil if the ok sequence was
+	detected, or a non-nil error*/
+	Simple(cmd, ok, failure []byte, duration time.Duration) Response
+
 	/*Control forms a byte slice to write out on the wire by combining cmd with
 	args, and sans error, will write the formed byte slice out on the wire. It
 	should block until either its internal buffer matches cmd.Response, cmd.Error,
@@ -54,11 +87,6 @@ type Arbiter interface {
 	populated correctly as described in the Response docstring*/
 	Control(cmd Command, args ...interface{}) Response
 }
-
-//arbitrate creates and Arbiter out of a IDoIO
-// func arbitrate(idoio IDoIO, err error) (Arbiter, error) {
-// 	return &arb{idotoo: idoio}, err
-// }
 
 /*NewArbiter returns an opened Arbiter from the passed dial string, ctx, and timeout.
 dial will need to match a known dial format, timeout will be used during the connection
@@ -126,6 +154,53 @@ func (a *Arb) Write(b []byte) (int, error) {
 	return a.idotoo.Write(b)
 }
 
+/*clearBuffer removes items from the internal buffers*/
+func (a *Arb) clearBuffer() {
+	//clear off any internal buffer
+	rdr := bufio.NewReader(a.idotoo)
+	for {
+		_, e := rdr.ReadByte()
+		if e != nil {
+			break
+		}
+	}
+}
+
+/*Simple is a very dumb version of control IO*/
+func (a *Arb) Simple(cmd, success, failure []byte, duration time.Duration) (rsp Response) {
+	a.mux.Lock()
+	defer a.mux.Unlock()
+
+	a.clearBuffer()
+	start := time.Now()
+	defer func() { rsp.Duration = time.Since(start) }()
+
+	//send off the bytes, barfing on any sort of write error
+	if n, werr := a.idotoo.Write(cmd); werr != nil || len(cmd) != n {
+		return Response{Error: fmt.Errorf("unable to write full message of %d bytes (wrote %d) withot an error: %v", len(cmd), n, werr)}
+	}
+
+	//creating data channel for communicating with reader
+	dataChan := make(chan cr, 0)
+
+	cf := func(raw []byte) ExitCriteria {
+		if failure != nil && bytes.Contains(raw, failure) {
+			return Failure
+		}
+		if success != nil && bytes.Contains(raw, success) {
+			return Success
+		}
+		return Insufficient
+	}
+
+	go a.readUntil(dataChan, duration, cf)
+
+	select { //block until our context is killed, or we get a response
+	case respData := <-dataChan:
+		return Response{Error: respData.e, Bytes: respData.b}
+	}
+}
+
 /*Control conforms to Arbiter interface, but this implementation uses a IDoIO to
 handles the data. Control is the reason that serialzed access is required:  when
 Commands are sent, Control needs to read all the incoming data while Checking
@@ -141,23 +216,15 @@ positive repsonse, and Command will only fail or timeout.  If bother .Error and
 func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
 	a.mux.Lock()
 	defer a.mux.Unlock()
-	start := time.Now()
-	defer func() { rsp.Duration = time.Since(start) }()
-
 	//Any sort of formatting error gets kicked back immediately
 	rawBytes, err := cmd.Bytes(args...)
 	if err != nil {
 		return Response{Error: err}
 	}
 
-	//clear off any internal buffer
-	rdr := bufio.NewReader(a.idotoo)
-	for {
-		_, e := rdr.ReadByte()
-		if e != nil {
-			break
-		}
-	}
+	a.clearBuffer()
+	start := time.Now()
+	defer func() { rsp.Duration = time.Since(start) }()
 
 	//send off the bytes, barfing on any sort of write error
 	if n, werr := a.idotoo.Write(rawBytes); werr != nil || len(rawBytes) != n {
@@ -166,11 +233,23 @@ func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
 
 	//creating data channel for communicating with reader
 	dataChan := make(chan cr, 0)
-	go a.waitForResponse(dataChan, cmd)
 
-	select { //block until our context is killed, or we get a response
-	case <-a.ctx.Done():
-		return Response{Error: a.ctx.Err()}
+	cf := func(raw []byte) ExitCriteria {
+		if cmd.Error != nil && cmd.Error.Match(raw) { //check for error response
+			return Failure
+		}
+		if cmd.Response != nil && cmd.Response.Match(raw) { //check for normal acceptable response
+			return Success
+		}
+		return Insufficient
+	}
+
+	go a.readUntil(dataChan, cmd.Timeout, cf)
+
+	select {
+	//block until our context is killed, or we get a response
+	// case <-a.ctx.Done():
+	// 	return Response{Error: a.ctx.Err()}
 	case respData := <-dataChan:
 		return Response{Error: respData.e, Bytes: respData.b}
 	}
@@ -182,9 +261,14 @@ type cr struct {
 	e error
 }
 
-/*waitForResponse repeatedly reads from the IDoIO waiting for a response, and */
-func (a *Arb) waitForResponse(dataChan chan<- cr, cmd Command) {
-	timeoutctx, cancel := context.WithTimeout(a.ctx, cmd.Timeout)
+/*readUntil repeatedly reads data off the embedded io device until either a
+duration of timeout elapses, or checkFunc returns either Success or Failure.
+Caller should utilize a go-routine to issue this and should always read from
+the passed channel exactly one time, otherwise this will deadlock. This closes
+the channel on exit.
+*/
+func (a *Arb) readUntil(dataChan chan<- cr, timeout time.Duration, checkFunc CheckFunc) {
+	timeoutctx, cancel := context.WithTimeout(a.ctx, timeout)
 	defer close(dataChan)
 	defer cancel()
 	rcvd, buf := bytes.NewBuffer(nil), bufio.NewReader(a.idotoo)
@@ -197,7 +281,7 @@ func (a *Arb) waitForResponse(dataChan chan<- cr, cmd Command) {
 		case <-timeoutctx.Done(): //timeout
 			dataChan <- cr{e: errors.Wrap(timeoutctx.Err(), "Command timed out before receiving the proper response"), b: rcvd.Bytes()}
 			return
-		case <-time.After(1 * time.Millisecond):
+		case <-time.After(1 * time.Millisecond): // is this necessary?
 			// default:
 		}
 
@@ -211,14 +295,13 @@ func (a *Arb) waitForResponse(dataChan chan<- cr, cmd Command) {
 		}
 
 		raw := rcvd.Bytes()
-		if cmd.Error != nil && cmd.Error.Match(raw) { //check for error response
+		switch checkFunc(raw) {
+		case Insufficient: //need more data
+		case Failure: //return failure
 			dataChan <- cr{e: errors.New("Command received error response"), b: raw}
 			return
-		}
-
-		if cmd.Response != nil && cmd.Response.Match(raw) { //check for normal acceptable response
+		case Success:
 			dataChan <- cr{e: nil, b: raw}
-			return
 		}
 	}
 }
