@@ -193,12 +193,11 @@ func (a *Arb) Simple(cmd, success, failure []byte, duration time.Duration) (rsp 
 		return Insufficient
 	}
 
+	// part of the contact of readUntil is that we must read from the passed channel.
+	// It will write the necessary data if the ctx collapses.
 	go a.readUntil(dataChan, duration, cf)
-
-	select { //block until our context is killed, or we get a response
-	case respData := <-dataChan:
-		return Response{Error: respData.err, Bytes: respData.raw}
-	}
+	d := <-dataChan
+	return Response{Error: d.err, Bytes: d.raw}
 }
 
 /*Control conforms to Arbiter interface, but this implementation uses a IDoIO to
@@ -214,22 +213,23 @@ positive repsonse, and Command will only fail or timeout.  If bother .Error and
 .Response are nil, this command will only timeout.
 */
 func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
-	a.mux.Lock()
-	defer a.mux.Unlock()
 	//Any sort of formatting error gets kicked back immediately
 	rawBytes, err := cmd.Bytes(args...)
 	if err != nil {
 		return Response{Error: err}
 	}
 
-	a.clearBuffer()
-	start := time.Now()
-	defer func() { rsp.Duration = time.Since(start) }()
+	a.mux.Lock()
+	defer a.mux.Unlock()
 
+	a.clearBuffer()
 	//send off the bytes, barfing on any sort of write error
 	if n, werr := a.idotoo.Write(rawBytes); werr != nil || len(rawBytes) != n {
 		return Response{Error: fmt.Errorf("unable to write full message of %d bytes (wrote %d) withot an error: %v", len(rawBytes), n, werr)}
 	}
+
+	start := time.Now()
+	defer func() { rsp.Duration = time.Since(start) }()
 
 	//creating data channel for communicating with reader
 	dataChan := make(chan status, 0)
@@ -244,15 +244,11 @@ func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
 		return Insufficient
 	}
 
+	// part of the contact of readUntil is that we must read from the passed channel.
+	// It will write the necessary data if the ctx collapses.
 	go a.readUntil(dataChan, cmd.Timeout, cf)
-
-	select {
-	//block until our context is killed, or we get a response
-	// case <-a.ctx.Done():
-	// 	return Response{Error: a.ctx.Err()}
-	case respData := <-dataChan:
-		return Response{Error: respData.err, Bytes: respData.raw}
-	}
+	d := <-dataChan
+	return Response{Error: d.err, Bytes: d.raw}
 }
 
 /*status is used to pass messages from readUntil back to callers.*/
@@ -281,6 +277,7 @@ func (a *Arb) readUntil(dataChan chan<- status, timeout time.Duration, checkFunc
 		case <-timeoutctx.Done(): //timeout
 			dataChan <- status{err: errors.Wrap(timeoutctx.Err(), "Command timed out before receiving the proper response"), raw: rcvd.Bytes()}
 			return
+		default:
 		}
 
 		for {
@@ -302,11 +299,3 @@ func (a *Arb) readUntil(dataChan chan<- status, timeout time.Duration, checkFunc
 		}
 	}
 }
-
-/*
-
-
-
-
-
- */

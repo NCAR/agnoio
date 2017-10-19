@@ -45,15 +45,34 @@ func arbHandler(t *testing.T, con net.Conn) {
 	t.Helper()
 	defer con.Close()
 	for {
+
+		buf := make([]byte, 1024)
+		reqLen, err := con.Read(buf)
+		switch err {
+		case nil:
+			fmt.Fprintf(con, "Rxd>%d", reqLen)
+		default:
+			return
+		}
+	}
+}
+
+func simpleHandler(t *testing.T, con net.Conn) {
+	t.Helper()
+	defer con.Close()
+	for {
 		// fmt.Println("\t\tarbHandler>> Waiting for Bytes")
 		buf := make([]byte, 1024)
 		reqLen, err := con.Read(buf)
 		switch err {
 		case nil:
-			// fmt.Printf("\t\tarbHandler>> Got %q - Writing 'Rxd>%d'\n", string(buf[0:reqLen]), reqLen)
-			fmt.Fprintf(con, "Rxd>%d", reqLen)
+			if bytes.Equal(buf[0:reqLen], []byte("cat")) {
+				fmt.Fprint(con, "meow")
+				continue
+			}
+			fmt.Fprint(con, "woof")
+
 		default:
-			// fmt.Println("\t\tarbHandler>> ", err)
 			return
 		}
 	}
@@ -104,6 +123,43 @@ func TestArb(t *testing.T) {
 	}
 }
 
+func TestArb_Simple(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_, srvdial, dial := randPortCfg()
+	go newTCPSvr(ctx, t, "tcp", srvdial, simpleHandler)
+	a, e := NewArbiter(ctx, 500*time.Millisecond, dial)
+
+	if e != nil {
+		t.Error("Unable to dial without an error", e)
+		t.FailNow()
+	}
+
+	defer a.Close()
+
+	//send a failing command
+	if resp := a.Simple([]byte("cat"), []byte("meow"), []byte("woof"), 100*time.Millisecond); resp.Error != nil {
+		t.Error("Wanted a successful meow, got this instead", resp)
+		t.FailNow()
+	}
+
+	if resp := a.Simple([]byte("dog"), []byte("meow"), []byte("woof"), 100*time.Millisecond); resp.Error == nil {
+		t.Error("Woof is a failure:  got ", resp)
+		t.FailNow()
+	}
+
+	if resp := a.Simple([]byte("mouse"), nil, nil, 300*time.Millisecond); resp.Error == nil {
+		t.Error("Expecting a timeout error", resp)
+		t.FailNow()
+	}
+
+	cancel() //kill context chain, call write, exepct error
+
+	if resp := a.Simple(nil, nil, nil, 300*time.Millisecond); resp.Error == nil {
+		t.Error("Excepted the context to be dead and an error to propegate")
+	}
+}
+
 var arbCmdBad, arbCmdOk, arbCmdError, arbCmdTimeout = Command{
 	Name:          "bad command",
 	Timeout:       500 * time.Millisecond,
@@ -136,10 +192,12 @@ var arbCmdBad, arbCmdOk, arbCmdError, arbCmdTimeout = Command{
 	}
 
 func TestArb_Control(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	tctx, tcancel := context.WithCancel(context.Background())
+	defer tcancel()
+	ctx, cancel := context.WithCancel(tctx)
 	defer cancel()
 	_, srvdial, dial := randPortCfg()
-	go newTCPSvr(ctx, t, "tcp", srvdial, arbHandler)
+	go newTCPSvr(tctx, t, "tcp", srvdial, arbHandler)
 	a, e := NewArbiter(ctx, 500*time.Millisecond, dial)
 	if e != nil {
 		t.Error("Unable to dial", e)
@@ -156,7 +214,7 @@ func TestArb_Control(t *testing.T) {
 		if i, e := a.Write([]byte("dead cat bounce")); i != 15 || e != nil {
 			t.Log("Wrote expecting 15 bytes out: only ", i)
 			t.Log("Err is ", e)
-			t.Error("Unabl to fill bufffer")
+			t.Error("Unable to fill bufffer")
 			t.FailNow()
 		}
 	}
@@ -225,9 +283,16 @@ func TestArb_Contexts(t *testing.T) {
 		t.Errorf("SHould get an error when trying to send")
 	}
 
-	//ditto on waitForResponse
-	dc := make(chan cr, 0)
-	go arb.waitForResponse(dc, arbCmdTimeout)
-	cancel()
-	<-dc
+	st := make(chan status, 0)
+	nctx, ncancel := context.WithCancel(context.Background())
+	arb.ctx = nctx
+	go arb.readUntil(st, 1*time.Hour, func([]byte) ExitCriteria { return Insufficient })
+	<-time.After(1 * time.Millisecond)
+	ncancel()
+	g := <-st
+	if g.err == nil || g.raw != nil {
+		t.Error("Didnt get proper error")
+	}
+	defer arb.Close()
+
 }
