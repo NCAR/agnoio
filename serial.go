@@ -26,6 +26,7 @@ package agnoio
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -48,6 +49,9 @@ func NewSerialClient(ctx context.Context, timeout time.Duration, dial string) (*
 	nctx, cancel := context.WithCancel(ctx)
 
 	sc := &SerialClient{
+		ctx:     nctx,
+		cancel:  cancel,
+		timeout: timeout,
 		opts: &serial.Config{
 			Name:        matches[0][1],
 			Baud:        int(i),
@@ -56,19 +60,17 @@ func NewSerialClient(ctx context.Context, timeout time.Duration, dial string) (*
 			Parity:      serial.ParityNone,
 			StopBits:    serial.Stop1,
 		},
-		timeout: timeout,
-		ctx:     nctx,
-		cancel:  cancel,
+		conn: &serial.Port{},
 	}
 	return sc, sc.Open()
 }
 
 /*SerialClient wraps around a serial port*/
 type SerialClient struct {
-	opts    *serial.Config
-	cancel  context.CancelFunc
 	ctx     context.Context
+	cancel  context.CancelFunc
 	timeout time.Duration
+	opts    *serial.Config
 	conn    *serial.Port
 }
 
@@ -82,10 +84,13 @@ attempts the connect process again.  It returns an error if it was unable to sta
 func (sc *SerialClient) Open() (err error) {
 	select {
 	case <-sc.ctx.Done():
-		return sc.Close()
+		return sc.ctx.Err()
 	default:
 	}
-	sc.Close()
+	if sc.conn != nil {
+		sc.conn.Close()
+		sc.conn = nil
+	}
 	sc.conn, err = serial.OpenPort(sc.opts)
 	return
 }
@@ -95,9 +100,13 @@ destruction after closing the underling transport*/
 func (sc *SerialClient) Read(b []byte) (int, error) {
 	select {
 	case <-sc.ctx.Done():
-		return 0, sc.Close()
+		defer sc.Close()
+		return 0, sc.ctx.Err()
 	default:
-		return sc.conn.Read(b)
+		if sc.conn != nil {
+			return sc.conn.Read(b)
+		}
+		return 0, errors.New("broken connection")
 	}
 }
 
@@ -106,9 +115,14 @@ destruction after closing the underling transport*/
 func (sc *SerialClient) Write(b []byte) (int, error) {
 	select {
 	case <-sc.ctx.Done():
-		return 0, sc.Close()
+		defer sc.Close()
+		return 0, sc.ctx.Err()
 	default:
-		return sc.conn.Write(b)
+		if sc.conn != nil {
+			return sc.conn.Write(b)
+		}
+		return 0, errors.New("broken connection")
+
 	}
 }
 

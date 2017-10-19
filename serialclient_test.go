@@ -30,6 +30,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/tarm/serial"
 )
 
 var (
@@ -102,5 +104,72 @@ func TestNewSerialClient(t *testing.T) {
 	if err := sc.Open(); err == nil {
 		t.Error("Should always get an error on a dead context")
 	}
+}
 
+/*This tests a large chunk of the context failures without needing a serial port*/
+func Test_SerialClient_NoConnect(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	if _, e := NewSerialClient(ctx, 0, "does-not-match-regexp"); e == nil {
+		t.Error("Expected an error - shouldnt get a serial obj")
+	}
+	sc, err := NewSerialClient(ctx, 100, "serial://dontexit:57600")
+	if err == nil {
+		t.Error("Exepected an error")
+	}
+	sc.conn = &serial.Port{}
+	_ = sc.String()
+
+	b := make([]byte, 16)
+	if n, e := sc.Read(b); n != 0 || e == nil {
+		t.Error("Reading a closed port should give some sort of error")
+	}
+
+	sc.conn = &serial.Port{}
+	if e := sc.Open(); e == nil {
+		t.Error("Reading a closed port should give some sort of error")
+	}
+
+	sc.conn = &serial.Port{}
+	if n, e := sc.Write(b); n != 0 || e == nil {
+		t.Error("Reading a closed port should give some sort of error")
+	}
+	sc.conn = &serial.Port{}
+
+	if e := sc.Close(); e == nil {
+		t.Error("Closing a closed port should give some sort of error")
+	}
+	//here, and only here, close should return nil
+	if e := sc.Close(); e != nil {
+		t.Error("Closing here should give a nil error")
+	}
+
+	//Do some more  reads/writes/closes with a nil - shouldnt matter nor panic
+	sc.conn = nil
+	if n, e := sc.Read(b); n != 0 || e == nil {
+		t.Error("Reading a closed port should give some sort of error")
+	}
+	if n, e := sc.Write(b); n != 0 || e == nil {
+		t.Error("Reading a closed port should give some sort of error")
+	}
+	if e := sc.Close(); e != nil {
+		t.Error("Closing a dead port should give a nil error")
+	}
+
+	//murder context, do it all again for the same response
+	cancel()
+
+	if n, e := sc.Read(b); n != 0 || e == nil {
+		t.Error("Reading a closed port should give some sort of error")
+	}
+	sc.conn = &serial.Port{}
+
+	if n, e := sc.Write(b); n != 0 || e == nil {
+		t.Error("Reading a closed port should give some sort of error")
+	}
+	sc.conn = &serial.Port{}
+
+	if e := sc.Close(); e == nil {
+		t.Error("Closing a closed port should give some sort of error")
+	}
 }

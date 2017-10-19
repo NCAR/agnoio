@@ -121,8 +121,8 @@ func (nc *NetClient) Open() (err error) {
 		Timeout: nc.timeout,
 		// Deadline:
 		// LocalAddr:
-		DualStack: false,
 		// FallbackDelay:
+		DualStack: false,
 		KeepAlive: 1 * time.Second,
 		Resolver:  nil,
 	}

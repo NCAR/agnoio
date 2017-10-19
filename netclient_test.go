@@ -50,6 +50,7 @@ func echoHandler(t *testing.T, con net.Conn) {
 }
 
 func randPortCfg() (port int, svr string, dial string) {
+	rand.Seed(time.Now().UnixNano())
 	port = rand.Intn(4000) + 2000
 	svr = fmt.Sprintf("localhost:%d", port)
 	dial = fmt.Sprintf("tcp://localhost:%d", port)
