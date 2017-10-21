@@ -67,7 +67,7 @@ encountered.
 */
 func NewNetClient(ctx context.Context, timeout time.Duration, dial string) (*NetClient, error) {
 	if !netClientRe.MatchString(dial) {
-		return nil, fmt.Errorf("dial string not in correct form")
+		return nil, newErr(false, false, fmt.Errorf("dial string not in correct form"))
 	}
 	matches := netClientRe.FindAllStringSubmatch(dial, -1) //capture groups used
 	nctx, cancel := context.WithCancel(ctx)
@@ -110,7 +110,7 @@ attempts the connect process again.  It returns an error if it was unable to sta
 func (nc *NetClient) Open() (err error) {
 	select {
 	case <-nc.ctx.Done():
-		return nc.ctx.Err()
+		return newErr(false, false, nc.ctx.Err())
 	default:
 	}
 	if nc.conn != nil {
@@ -126,6 +126,7 @@ func (nc *NetClient) Open() (err error) {
 		KeepAlive: 1 * time.Second,
 		Resolver:  nil,
 	}
+	//Errors from DialContext implent net.Error
 	nc.conn, err = dialer.DialContext(nc.ctx, nc.network, nc.address)
 	return
 }
@@ -136,12 +137,12 @@ func (nc *NetClient) Read(b []byte) (int, error) {
 	select {
 	case <-nc.ctx.Done():
 		defer nc.Close()
-		return 0, nc.ctx.Err()
+		return 0, newErr(false, false, nc.ctx.Err())
 	default:
 		if nc.timeout > 0 {
 			nc.conn.SetReadDeadline(time.Now().Add(nc.timeout))
 		}
-		return nc.conn.Read(b)
+		return nc.conn.Read(b) //nc.conn  return errors that conform to net.Error
 	}
 }
 
@@ -151,12 +152,12 @@ func (nc *NetClient) Write(b []byte) (int, error) {
 	select {
 	case <-nc.ctx.Done():
 		defer nc.Close()
-		return 0, nc.ctx.Err()
+		return 0, newErr(false, false, nc.ctx.Err())
 	default:
 		if nc.timeout > 0 {
 			nc.conn.SetWriteDeadline(time.Now().Add(nc.timeout))
 		}
-		return nc.conn.Write(b)
+		return nc.conn.Write(b) //nc.conn  return errors that conform to net.Error
 	}
 }
 
@@ -166,7 +167,7 @@ func (nc *NetClient) Close() error {
 	defer func() { nc.conn = nil }()
 	select {
 	case <-nc.ctx.Done():
-		return nc.ctx.Err() //Context closed: return that error
+		return newErr(false, false, nc.ctx.Err()) //Context closed: return that error
 	default:
 		if nc.conn != nil {
 			return nc.conn.Close()

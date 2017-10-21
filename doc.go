@@ -64,6 +64,12 @@ behaviour.
 
 Error Handling
 
+All errors returned from this package either implicitly or explicitly conform to
+net.Error, which is to say after a cast, you have access to two additional func
+receviers: .Timeout() and .Temporary().  Timeout() returns true if the error was
+due to a timeout of some variety, and the transport is still opened. Temporary()
+returns true if the error is a temporary error, and true if the connection is
+closed and will need to be opened.
 
 It is prefered that no structres provided by this package attempt to maintain a
 constant connection, but rather that when the connection dies / is killed /

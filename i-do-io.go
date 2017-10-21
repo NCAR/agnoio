@@ -37,7 +37,9 @@ should be able to tell others in some human readable string form what the
 transport actually is (fmt.Stringer). An IDoIO should alow be able to read,
 and write byte slices (io.ReadWriter), and also should be able to Open and Close
 the device as will.  This does mean that once created, an IDoIO needs to cache
-and properly deal with opening critera.*/
+and properly deal with opening critera.
+
+Any error returned must be castable to net.Error*/
 type IDoIO interface {
 	fmt.Stringer
 	io.ReadWriter
@@ -61,5 +63,5 @@ func NewIDoIO(ctx context.Context, timeout time.Duration, dial string) (IDoIO, e
 			return funcptr(ctx, timeout, dial)
 		}
 	}
-	return nil, fmt.Errorf("No known way to create a IOStreamer from %q", dial)
+	return nil, newErr(false, false, fmt.Errorf("No known way to create a IOStreamer from %q", dial))
 }

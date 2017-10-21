@@ -28,6 +28,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strconv"
 	"time"
@@ -42,7 +43,7 @@ var serialRe = regexp.MustCompile("^rs232|serial:\\/\\/([^:]*):([0-9]*)$")
 Dial should be in the form of "serial://<device>:<baud>*/
 func NewSerialClient(ctx context.Context, timeout time.Duration, dial string) (*SerialClient, error) {
 	if !serialRe.MatchString(dial) {
-		return nil, fmt.Errorf("dial string not in correct form")
+		return nil, newErr(false, false, fmt.Errorf("dial string not in correct form"))
 	}
 	matches := serialRe.FindAllStringSubmatch(dial, -1) //capture groups used
 	i, _ := strconv.ParseInt(matches[0][2], 10, 64)
@@ -84,15 +85,17 @@ attempts the connect process again.  It returns an error if it was unable to sta
 func (sc *SerialClient) Open() (err error) {
 	select {
 	case <-sc.ctx.Done():
-		return sc.ctx.Err()
+		return newErr(false, false, sc.ctx.Err())
 	default:
 	}
 	if sc.conn != nil {
 		sc.conn.Close()
 		sc.conn = nil
 	}
-	sc.conn, err = serial.OpenPort(sc.opts)
-	return
+	if sc.conn, err = serial.OpenPort(sc.opts); err != nil {
+		return newErr(false, false, sc.ctx.Err())
+	}
+	return nil
 }
 
 /*Read conforms to io.Writer, but immediately returns upon ctx
@@ -101,12 +104,21 @@ func (sc *SerialClient) Read(b []byte) (int, error) {
 	select {
 	case <-sc.ctx.Done():
 		defer sc.Close()
-		return 0, sc.ctx.Err()
+		return 0, newErr(false, false, sc.ctx.Err())
 	default:
-		if sc.conn != nil {
-			return sc.conn.Read(b)
+		if sc.conn == nil {
+			return 0, newErr(false, false, errors.New("broken connection"))
 		}
-		return 0, errors.New("broken connection")
+
+		n, e := sc.conn.Read(b)
+		switch e {
+		case nil:
+			return n, nil
+		case io.EOF: //most likely as a timeout
+			return n, newErr(true, true, e)
+		default:
+			return n, newErr(false, false, e)
+		}
 	}
 }
 
@@ -116,13 +128,20 @@ func (sc *SerialClient) Write(b []byte) (int, error) {
 	select {
 	case <-sc.ctx.Done():
 		defer sc.Close()
-		return 0, sc.ctx.Err()
+		return 0, newErr(false, false, sc.ctx.Err())
 	default:
-		if sc.conn != nil {
-			return sc.conn.Write(b)
+		if sc.conn == nil {
+			return 0, newErr(false, false, errors.New("broken connection"))
 		}
-		return 0, errors.New("broken connection")
-
+		n, e := sc.conn.Write(b)
+		switch e {
+		case nil:
+			return n, nil
+		case io.EOF: //most likely as a timeout??
+			return n, newErr(true, true, e)
+		default:
+			return n, newErr(false, false, e)
+		}
 	}
 }
 
@@ -132,10 +151,10 @@ func (sc *SerialClient) Close() error {
 	defer func() { sc.conn = nil }()
 	select {
 	case <-sc.ctx.Done():
-		return sc.ctx.Err() //Context closed: return that error
+		return newErr(false, false, sc.ctx.Err()) //Context closed: return that error
 	default:
 		if sc.conn != nil {
-			return sc.conn.Close()
+			return newErr(false, false, sc.conn.Close())
 		}
 		return nil
 	}

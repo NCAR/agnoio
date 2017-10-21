@@ -29,6 +29,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -177,7 +178,7 @@ func (a *Arb) Simple(cmd, success, failure []byte, duration time.Duration) (rsp 
 
 	//send off the bytes, barfing on any sort of write error
 	if n, werr := a.idotoo.Write(cmd); werr != nil || len(cmd) != n {
-		return Response{Error: fmt.Errorf("unable to write full message of %d bytes (wrote %d) withot an error: %v", len(cmd), n, werr)}
+		return Response{Error: werr}
 	}
 
 	//creating data channel for communicating with reader
@@ -225,7 +226,7 @@ func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
 	a.clearBuffer()
 	//send off the bytes, barfing on any sort of write error
 	if n, werr := a.idotoo.Write(rawBytes); werr != nil || len(rawBytes) != n {
-		return Response{Error: fmt.Errorf("unable to write full message of %d bytes (wrote %d) withot an error: %v", len(rawBytes), n, werr)}
+		return Response{Error: werr}
 	}
 
 	start := time.Now()
@@ -272,27 +273,39 @@ func (a *Arb) readUntil(dataChan chan<- status, timeout time.Duration, checkFunc
 	for {
 		select {
 		case <-a.ctx.Done(): //context chain has collapsed
-			dataChan <- status{err: errors.Wrap(a.ctx.Err(), "Arbiter's context chain has collapsed"), raw: rcvd.Bytes()}
+			dataChan <- status{raw: rcvd.Bytes(), err: newErr(false, false, errors.Wrap(a.ctx.Err(), "Arbiter's context chain has collapsed"))}
 			return
 		case <-timeoutctx.Done(): //timeout
-			dataChan <- status{err: errors.Wrap(timeoutctx.Err(), "Command timed out before receiving the proper response"), raw: rcvd.Bytes()}
+			dataChan <- status{raw: rcvd.Bytes(), err: newErr(true, true, errors.Wrap(timeoutctx.Err(), "Command timed out before receiving the proper response"))}
 			return
 		default:
 		}
 
-		for {
+		reading := true
+		for reading {
 			b, e := buf.ReadByte()
-			if e != nil {
-				break
+			switch e {
+			case nil:
+				rcvd.WriteByte(b)
+			default:
+				if ne, ok := e.(net.Error); ok {
+					if ne.Timeout() {
+						reading = false
+						continue
+					}
+					if !ne.Temporary() {
+						dataChan <- status{raw: rcvd.Bytes(), err: newErr(false, true, errors.New("Error Reading from buffer"))}
+						return
+					}
+				}
 			}
-			rcvd.WriteByte(b)
 		}
 
 		raw := rcvd.Bytes()
 		switch checkFunc(raw) {
 		case Insufficient: //need more data
 		case Failure: //return failure
-			dataChan <- status{err: errors.New("Command received error response"), raw: raw}
+			dataChan <- status{err: newErr(true, false, errors.New("Command received error response")), raw: raw}
 			return
 		case Success:
 			dataChan <- status{err: nil, raw: raw}
