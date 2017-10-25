@@ -89,6 +89,9 @@ type Arbiter interface {
 	Control(cmd Command, args ...interface{}) Response
 }
 
+/*ErrErrorResponse is returned when the failure and error reponse is received*/
+var ErrErrorResponse = newErr(false, false, errors.New("Command received error response"))
+
 /*NewArbiter returns an opened Arbiter from the passed dial string, ctx, and timeout.
 dial will need to match a known dial format, timeout will be used during the connection
 process, and the ctx will be used to ensure the operation will cease if the ctx is
@@ -167,7 +170,11 @@ func (a *Arb) clearBuffer() {
 	}
 }
 
-/*Simple is a very dumb version of control IO*/
+/*Simple is a very dumb version of control IO.  It blindly sends the 'cmd' byte
+slice, and looks for success or failure byte slicked before the passed duration
+happened.  If success is non-nil and exists in the read byte slice,
+Response.Error will be nil.  If failure is non-nil and matches data read from the
+incoming byte slice, The Response.Error will be the package ErrErrorResponse*/
 func (a *Arb) Simple(cmd, success, failure []byte, duration time.Duration) (rsp Response) {
 	a.mux.Lock()
 	defer a.mux.Unlock()
@@ -211,7 +218,8 @@ completeness (see Command.Bytes) If .Error is nil (not set), then the output is
 not compared for an error condition, and the command will only succeed or
 timeout. If .Response is nil (not set), then the output is not compared for an
 positive repsonse, and Command will only fail or timeout.  If bother .Error and
-.Response are nil, this command will only timeout.
+.Response are nil, this command will only timeout. The response.Error will be
+the package ErrErrorResponse if the Error condition is matched
 */
 func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
 	//Any sort of formatting error gets kicked back immediately
@@ -305,7 +313,7 @@ func (a *Arb) readUntil(dataChan chan<- status, timeout time.Duration, checkFunc
 		switch checkFunc(raw) {
 		case Insufficient: //need more data
 		case Failure: //return failure
-			dataChan <- status{err: newErr(true, false, errors.New("Command received error response")), raw: raw}
+			dataChan <- status{err: ErrErrorResponse, raw: raw}
 			return
 		case Success:
 			dataChan <- status{err: nil, raw: raw}
