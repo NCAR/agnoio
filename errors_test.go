@@ -34,4 +34,12 @@ func TestNetError(t *testing.T) {
 	_ = e.Error()
 	_ = e.Timeout()
 	_ = e.Temporary()
+	if !IsTimeout(e) || !IsTemporary(e) {
+		t.Error("Expected e to be a timeout and temporary")
+	}
+
+	ee := errors.New("Boring error")
+	if IsTimeout(ee) || IsTemporary(ee) {
+		t.Error("Expected e to be neither a timeout nor temporary")
+	}
 }

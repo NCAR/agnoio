@@ -24,7 +24,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+import "net"
+
 var _ error = &neterror{}
+var _ net.Error = &neterror{}
 
 type neterror struct {
 	err                error
@@ -51,4 +54,20 @@ func (ne neterror) Temporary() bool {
 
 func (ne neterror) Timeout() bool {
 	return ne.timeout
+}
+
+/*IsTemporary is a shorthand way to check if a returned error is temporary*/
+func IsTemporary(err error) bool {
+	if ne, ok := err.(net.Error); ok {
+		return ne.Temporary()
+	}
+	return false
+}
+
+/*IsTimeout is a shorthand way to check if a returned error is a timeout*/
+func IsTimeout(err error) bool {
+	if ne, ok := err.(net.Error); ok {
+		return ne.Timeout()
+	}
+	return false
 }
