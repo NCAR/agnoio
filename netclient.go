@@ -72,11 +72,12 @@ func NewNetClient(ctx context.Context, timeout time.Duration, dial string) (*Net
 	matches := netClientRe.FindAllStringSubmatch(dial, -1) //capture groups used
 	nctx, cancel := context.WithCancel(ctx)
 	nc := &NetClient{
-		network: matches[0][1],
-		address: matches[0][2],
-		timeout: timeout,
-		ctx:     nctx,
-		cancel:  cancel,
+		network:   matches[0][1],
+		address:   matches[0][2],
+		timeout:   timeout,
+		rwtimeout: 1 * time.Millisecond,
+		ctx:       nctx,
+		cancel:    cancel,
 	}
 	return nc, nc.Open()
 }
@@ -96,6 +97,7 @@ type NetClient struct {
 	network, address string
 	cancel           context.CancelFunc
 	ctx              context.Context
+	rwtimeout        time.Duration
 	timeout          time.Duration
 	conn             net.Conn
 }
@@ -140,7 +142,7 @@ func (nc *NetClient) Read(b []byte) (int, error) {
 		return 0, newErr(false, false, nc.ctx.Err())
 	default:
 		// if nc.timeout > 0 {
-		nc.conn.SetReadDeadline(time.Now().Add(1 * time.Microsecond))
+		nc.conn.SetReadDeadline(time.Now().Add(nc.rwtimeout))
 		// }
 		return nc.conn.Read(b) //nc.conn  return errors that conform to net.Error
 	}
@@ -156,7 +158,7 @@ func (nc *NetClient) Write(b []byte) (int, error) {
 		return 0, newErr(false, false, nc.ctx.Err())
 	default:
 		// if nc.timeout > 0 {
-		nc.conn.SetWriteDeadline(time.Now().Add(1 * time.Microsecond))
+		nc.conn.SetWriteDeadline(time.Now().Add(nc.rwtimeout))
 		// }
 		return nc.conn.Write(b) //nc.conn  return errors that conform to net.Error
 	}
