@@ -63,5 +63,6 @@ func NewIDoIO(ctx context.Context, timeout time.Duration, dial string) (IDoIO, e
 			return funcptr(ctx, timeout, dial)
 		}
 	}
-	return nil, newErr(false, false, fmt.Errorf("No known way to create a IOStreamer from %q", dial))
+	err := newErr(false, false, fmt.Errorf("No known way to create a IOStreamer from %q", dial))
+	return InvalidIO(err.Error()), err
 }
