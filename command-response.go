@@ -69,26 +69,6 @@ type Command struct {
 	Description string
 }
 
-/*Response is what is returns from Command requests.
-
-Bytes is a copy of the []byte read while waiting for a timeout or matching response.
-Error is one of:
-  - nil if the bytes received match the ingoing Command.Response regexp
-  - ErrTimeout if a timeout was receieved
-  - Some other error on other low level issures.
-Duration is the duration the command took before it succeeded (or failed).
-*/
-type Response struct {
-	Bytes    []byte        //Raw bytes read or received.  In Control funcs, this is the raw value that matched the 'match' clause
-	Error    error         //any non-nil errors
-	Duration time.Duration //how long did the request take
-}
-
-//String implements the Stringer interface
-func (r Response) String() string {
-	return fmt.Sprintf("Response> Rx Bytes: %q\tErrors: %v\tDuration: %v", r.Bytes, r.Error, r.Duration)
-}
-
 //String implements the Stringer interface
 func (c Command) String() string {
 	sanitize := func(i interface{}) string {
@@ -176,6 +156,29 @@ func (c Commands) JSONLabels() (r string) {
 	return
 }
 
+/*Contains returns true if the command set contains any of the passed named
+commands.  It checks the key values, not the embedded Command.Name values*/
+func (c Commands) Contains(named ...string) bool {
+	if c == nil || len(named) == 0 {
+		return false
+	}
+	for _, name := range named {
+		if _, ok := c[name]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+/*Clone returns a deep copy of the Commands*/
+func (c Commands) Clone() Commands {
+	r := Commands{}
+	for name, cmd := range c {
+		r[name] = cmd
+	}
+	return r
+}
+
 /*Merge takes multiple command sets and returns a single command set*/
 func Merge(cmds ...Commands) Commands {
 	c := Commands{}
@@ -185,4 +188,24 @@ func Merge(cmds ...Commands) Commands {
 		}
 	}
 	return c
+}
+
+/*Response is what is returns from Command requests.
+
+Bytes is a copy of the []byte read while waiting for a timeout or matching response.
+Error is one of:
+  - nil if the bytes received match the ingoing Command.Response regexp
+  - ErrTimeout if a timeout was receieved
+  - Some other error on other low level issures.
+Duration is the duration the command took before it succeeded (or failed).
+*/
+type Response struct {
+	Bytes    []byte        //Raw bytes read or received.  In Control funcs, this is the raw value that matched the 'match' clause
+	Error    error         //any non-nil errors
+	Duration time.Duration //how long did the request take
+}
+
+//String implements the Stringer interface
+func (r Response) String() string {
+	return fmt.Sprintf("Response> Rx Bytes: %q\tErrors: %v\tDuration: %v", r.Bytes, r.Error, r.Duration)
 }

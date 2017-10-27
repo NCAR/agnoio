@@ -192,6 +192,34 @@ func TestResponse_String(t *testing.T) {
 	}
 }
 
+func TestCommands_Contains(t *testing.T) {
+	c, d := Commands(nil), Commands{}
+	if c.Contains() || d.Contains() {
+		t.Error("nil & empty Commands should Contain() false")
+	}
+	c = Commands{"a": Command{}, "b": Command{}}
+	if c.Contains("a", "b", "c") {
+		t.Error("Expect contains to return true for all values")
+	}
+	if !c.Contains("a", "b") {
+		t.Error("Expected true")
+	}
+}
+
+func TestCommands_Clone(t *testing.T) {
+	c := Commands{"a": Command{}, "b": Command{}}
+	d := c.Clone()
+
+	delete(d, "a")
+	delete(d, "b")
+	if d.Contains("a", "b") || !c.Contains("a", "b") {
+		t.Error("Clone should not be coupled to the parent")
+	}
+
+	//clean out d
+
+}
+
 func TestMerge(t *testing.T) {
 	c := Commands{"a": Command{}, "b": Command{}}
 	d := Merge(c, c, c, c, c, c, c)
