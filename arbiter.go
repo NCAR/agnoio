@@ -137,9 +137,10 @@ func (a *Arb) Open() error {
 /*Close conforms to IDoIO and io.Closer, but for an Arbiter. Unlike a regular
 IDoIO, access is locked within a mutex, and the read and write channels are linked*/
 func (a *Arb) Close() error {
+	a.cancel()
 	a.mux.Lock()
 	defer a.mux.Unlock()
-	return a.idotoo.Open()
+	return a.idotoo.Close()
 }
 
 /*Read conforms to IDoIO, io.Reader, but for an Arbiter. Unlike a regular IDoIO,

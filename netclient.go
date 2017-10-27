@@ -139,9 +139,9 @@ func (nc *NetClient) Read(b []byte) (int, error) {
 		defer nc.Close()
 		return 0, newErr(false, false, nc.ctx.Err())
 	default:
-		if nc.timeout > 0 {
-			nc.conn.SetReadDeadline(time.Now().Add(nc.timeout))
-		}
+		// if nc.timeout > 0 {
+		nc.conn.SetReadDeadline(time.Now().Add(1 * time.Microsecond))
+		// }
 		return nc.conn.Read(b) //nc.conn  return errors that conform to net.Error
 	}
 }
@@ -151,12 +151,13 @@ destruction after closing the underling transport*/
 func (nc *NetClient) Write(b []byte) (int, error) {
 	select {
 	case <-nc.ctx.Done():
+		fmt.Println(">>>>> Read Closing")
 		defer nc.Close()
 		return 0, newErr(false, false, nc.ctx.Err())
 	default:
-		if nc.timeout > 0 {
-			nc.conn.SetWriteDeadline(time.Now().Add(nc.timeout))
-		}
+		// if nc.timeout > 0 {
+		nc.conn.SetWriteDeadline(time.Now().Add(1 * time.Microsecond))
+		// }
 		return nc.conn.Write(b) //nc.conn  return errors that conform to net.Error
 	}
 }
@@ -164,14 +165,20 @@ func (nc *NetClient) Write(b []byte) (int, error) {
 /*Close conforms to io.Closer, but immediately returns upon ctx
 destruction after closing the underling transport*/
 func (nc *NetClient) Close() error {
+	nc.cancel()
 	defer func() { nc.conn = nil }()
-	select {
-	case <-nc.ctx.Done():
-		return newErr(false, false, nc.ctx.Err()) //Context closed: return that error
-	default:
-		if nc.conn != nil {
-			return nc.conn.Close()
-		}
-		return nil
+	if nc.conn != nil {
+		return nc.conn.Close()
 	}
+	return nil
+
+	// select {
+	// case <-nc.ctx.Done():
+	// 	return newErr(false, false, nc.ctx.Err()) //Context closed: return that error
+	// default:
+	// 	if nc.conn != nil {
+	// 		return nc.conn.Close()
+	// 	}
+	// 	return nil
+	// }
 }
