@@ -59,30 +59,35 @@ func randPortCfg() (port int, svr string, dial string) {
 
 func newTCPSvr(ctx context.Context, t *testing.T, proto string, addr string, handler respHandler) {
 	t.Helper()
-	svr, err := net.Listen(proto, addr)
-
-	if err != nil {
-		t.Error(err)
-		t.Error("Unable to start server")
-		panic(err)
-	}
-	t.Log("Listening on ", proto, addr)
+	running := make(chan struct{})
 	go func() {
-		defer svr.Close()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-			con, err := svr.Accept()
-			if err != nil {
-				t.Log("Connection Error:", err)
-			}
-			go handler(t, con)
-			defer con.Close()
+		defer close(running)
+		svr, err := net.Listen(proto, addr)
+		if err != nil {
+			t.Error(err)
+			t.Error("Unable to start server")
+			panic(err)
 		}
+		running <- struct{}{}
+		t.Log("Listening on ", proto, addr)
+		go func() {
+			defer svr.Close()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				con, err := svr.Accept()
+				if err != nil {
+					t.Log("Connection Error:", err)
+				}
+				go handler(t, con)
+				defer con.Close()
+			}
+		}()
 	}()
+	<-running
 }
 
 func TestNewNetClient(t *testing.T) {

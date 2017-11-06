@@ -83,7 +83,7 @@ func TestArb(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	_, svrdial, dial := randPortCfg()
-	go newTCPSvr(ctx, t, "tcp", svrdial, arbHandler)
+	newTCPSvr(ctx, t, "tcp", svrdial, arbHandler)
 
 	a, e := NewArbiter(ctx, 500*time.Millisecond, dial)
 	if a == nil || e != nil {
@@ -127,7 +127,7 @@ func TestArb_Simple(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	_, srvdial, dial := randPortCfg()
-	go newTCPSvr(ctx, t, "tcp", srvdial, simpleHandler)
+	newTCPSvr(ctx, t, "tcp", srvdial, simpleHandler)
 	a, e := NewArbiter(ctx, 500*time.Millisecond, dial)
 
 	if e != nil {
@@ -197,7 +197,7 @@ func TestArb_Control(t *testing.T) {
 	ctx, cancel := context.WithCancel(tctx)
 	defer cancel()
 	_, srvdial, dial := randPortCfg()
-	go newTCPSvr(tctx, t, "tcp", srvdial, arbHandler)
+	newTCPSvr(tctx, t, "tcp", srvdial, arbHandler)
 	a, e := NewArbiter(ctx, 500*time.Millisecond, dial)
 	if e != nil {
 		t.Error("Unable to dial", e)
@@ -248,7 +248,7 @@ func TestArb_Contexts(t *testing.T) {
 	_, srvdial, dial := randPortCfg()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go newTCPSvr(ctx, t, "tcp", srvdial, arbHandler)
+	newTCPSvr(ctx, t, "tcp", srvdial, arbHandler)
 
 	//manually create an arbiter:
 	arbctx, arbcncl := context.WithCancel(ctx)
