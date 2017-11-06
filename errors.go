@@ -43,11 +43,13 @@ func newErr(temporary, timeout bool, err error) *neterror {
 	}
 }
 
-/*Error returns the */
+/*Error returns the base error as a string, and conforms to the error interface */
 func (ne neterror) Error() string {
 	return ne.err.Error()
 }
 
+/*Temporary return true if the error is a temporary error, indicating the connection
+is still active, and the error */
 func (ne neterror) Temporary() bool {
 	return ne.temporary
 }
@@ -56,16 +58,24 @@ func (ne neterror) Timeout() bool {
 	return ne.timeout
 }
 
-/*IsTemporary is a shorthand way to check if a returned error is temporary*/
+/*IsTemporary is a shorthand way to check if a returned error is temporary. Dont
+pass nil errors here, the desired behaviour is not defined, and will panic*/
 func IsTemporary(err error) bool {
+	if err == nil {
+		panic("Unable to determine what to do with a nil error.")
+	}
 	if ne, ok := err.(net.Error); ok {
 		return ne.Temporary()
 	}
 	return false
 }
 
-/*IsTimeout is a shorthand way to check if a returned error is a timeout*/
+/*IsTimeout is a shorthand way to check if a returned error is a timeout. Dont
+pass nil errors here, the desired behaviour is not defined, and will panic*/
 func IsTimeout(err error) bool {
+	if err == nil {
+		panic("Unable to determine what to do with a nil error.")
+	}
 	if ne, ok := err.(net.Error); ok {
 		return ne.Timeout()
 	}

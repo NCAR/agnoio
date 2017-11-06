@@ -87,17 +87,6 @@ func (c Command) String() string {
 	return fmt.Sprintf("%s: %v Prototype:%q CommandRegexp:%q Expect:%q Error:%q", c.Name, c.Timeout, sanitize(c.Prototype), sanitize(c.CommandRegexp), sanitize(c.Response), sanitize(c.Error))
 }
 
-var (
-	//ErrBytesArgs is returned when calling Bytes if any of the following occur:
-	//	Wrong Number of args (too few / many)
-	//	Wrong order (ie Command.Prototype is "%s %d" and provided args are '24, "string"'')
-	//	Wrong types (ie Command.Prototype is "%s" and provided arg is '25')
-	ErrBytesArgs = fmt.Errorf("Proper arguments not provided to expand command into bytes")
-
-	//ErrBytesFormat is returned when the args used to populate the command are forming an invalid command
-	ErrBytesFormat = fmt.Errorf("Formed command does not match allowable format for outgoing commands")
-)
-
 /*Bytes returnes the raw bytes that should be sent to the interface based on the
 Command.Prototype and any optional arguments passed to it via
   fmt.Sprintf(.Prototype, v...)

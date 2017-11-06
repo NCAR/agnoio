@@ -80,6 +80,10 @@ special handling.
 */
 package agnoio
 
+import (
+	"github.com/pkg/errors"
+)
+
 /*
 MIT License
 
@@ -103,3 +107,22 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
+
+var (
+	//ErrBytesArgs is returned when calling Bytes if any of the following occur:
+	// - Wrong Number of args (too few / many)
+	// - Wrong order (ie Command.Prototype is "%s %d" and provided args are '24, "string"'')
+	// - Wrong types (ie Command.Prototype is "%s" and provided arg is '25')
+	ErrBytesArgs = errors.Errorf("Proper arguments not provided to expand command into bytes")
+
+	//ErrBytesFormat is returned when the args used to populate the command forms
+	//a byte[] that does not match the Validating regexp (.CommandRegexp)
+	ErrBytesFormat = errors.Errorf("Formed command does not match allowable format for outgoing commands")
+
+	// ErrErrorResponse is returned when the response to a command matches the failure
+	// or error criterial criteria.  It has the following properties:
+	// - IsTemporary(ErrErrorResponse) = false
+	// - IsTimeout(ErrErrorResponse) == false
+	// This error is intended to be used to compare against when checking errors
+	ErrErrorResponse = newErr(false, false, errors.New("Command received error response"))
+)

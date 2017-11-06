@@ -29,7 +29,7 @@ import (
 	"fmt"
 )
 
-/*InvalidIO conforms to IDoIO, but returns an error for every opteration.
+/*InvalidIO conforms to IDoIO, but returns an error for every operation.
 
 If invalid Dial strings are passed, you received one of these*/
 type InvalidIO string

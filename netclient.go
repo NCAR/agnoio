@@ -82,7 +82,7 @@ func NewNetClient(ctx context.Context, timeout time.Duration, dial string) (*Net
 	return nc, nc.Open()
 }
 
-/*NetClient provides a implementer of the  IOStreamer interface.  It provides
+/*NetClient provides a implementer of the IDoIO interface.  It provides
 access under the following URI Regimes:
   tcp://
   tcp4://
@@ -102,7 +102,11 @@ type NetClient struct {
 	conn             net.Conn
 }
 
-/*String conforms to the fmt.Stringer interface*/
+/*String conforms to the fmt.Stringer interface.  Prints something like
+
+	tcp6 connection to tcp6://localhost::8080
+
+which meant as a human comprehendable explaination of the connection*/
 func (nc *NetClient) String() string {
 	return fmt.Sprintf("%v connection to %v", nc.network, nc.address)
 }
@@ -172,14 +176,4 @@ func (nc *NetClient) Close() error {
 		return nc.conn.Close()
 	}
 	return nil
-
-	// select {
-	// case <-nc.ctx.Done():
-	// 	return newErr(false, false, nc.ctx.Err()) //Context closed: return that error
-	// default:
-	// 	if nc.conn != nil {
-	// 		return nc.conn.Close()
-	// 	}
-	// 	return nil
-	// }
 }

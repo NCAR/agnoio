@@ -42,4 +42,19 @@ func TestNetError(t *testing.T) {
 	if IsTimeout(ee) || IsTemporary(ee) {
 		t.Error("Expected e to be neither a timeout nor temporary")
 	}
+
+	//catch panics
+	f := func(p func(error) bool) {
+		var e interface{}
+		defer func() {
+			e = recover()
+			if e == nil {
+				t.Error("expected a panic on sending a nil error")
+			}
+		}()
+		p(nil)
+	}
+
+	f(IsTimeout)
+	f(IsTemporary)
 }

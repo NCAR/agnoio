@@ -89,9 +89,6 @@ type Arbiter interface {
 	Control(cmd Command, args ...interface{}) Response
 }
 
-/*ErrErrorResponse is returned when the failure and error reponse is received*/
-var ErrErrorResponse = newErr(false, false, errors.New("Command received error response"))
-
 /*NewArbiter returns an opened Arbiter from the passed dial string, ctx, and timeout.
 dial will need to match a known dial format, timeout will be used during the connection
 process, and the ctx will be used to ensure the operation will cease if the ctx is
@@ -120,14 +117,14 @@ type Arb struct {
 	idotoo IDoIO
 }
 
-/*String  conforms to IDoIO, but for an Arbiter.  Unlike a regular IDoIO, access is
-locked within a mutex, and the read and write channels are linked*/
+/*String  conforms to IDoIO, but for an Arbiter. It usually returns something
+like "Arbiter over <idoio>", where <idoio> is the Stringer variant of the underling IDoIO*/
 func (a *Arb) String() string {
-	return fmt.Sprintf("Arbiter over %s", a.idotoo.String())
+	return fmt.Sprintf("Arbiter over %v", a.idotoo)
 }
 
 /*Open conforms to IDoIO, but for an Arbiter.  Unlike a regular IDoIO, access is
-locked within a mutex, and the read and write channels are linked*/
+locked within a mutex, and the read and write channels are linked / bonded*/
 func (a *Arb) Open() error {
 	a.mux.Lock()
 	defer a.mux.Unlock()
@@ -135,7 +132,8 @@ func (a *Arb) Open() error {
 }
 
 /*Close conforms to IDoIO and io.Closer, but for an Arbiter. Unlike a regular
-IDoIO, access is locked within a mutex, and the read and write channels are linked*/
+IDoIO, access is locked within a mutex, and the read and write channels are
+linked / bonded*/
 func (a *Arb) Close() error {
 	a.cancel()
 	a.mux.Lock()
@@ -144,7 +142,7 @@ func (a *Arb) Close() error {
 }
 
 /*Read conforms to IDoIO, io.Reader, but for an Arbiter. Unlike a regular IDoIO,
-access is locked within a mutex, and the read and write channels are linked*/
+access is locked within a mutex, and the read and write channels are linked / bonded*/
 func (a *Arb) Read(b []byte) (int, error) {
 	a.mux.Lock()
 	defer a.mux.Unlock()
@@ -152,15 +150,15 @@ func (a *Arb) Read(b []byte) (int, error) {
 }
 
 /*Write conforms to IDoIO, io.Writer, but for an Arbiter. Unlike a regular IDoIO,
-access is locked within a mutex, and the read and write channels are linked*/
+access is locked within a mutex, and the read and write channels are linked / bonded*/
 func (a *Arb) Write(b []byte) (int, error) {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 	return a.idotoo.Write(b)
 }
 
-/*clearBuffer removes items from the internal buffers*/
-func (a *Arb) clearBuffer() {
+/*clearReadBuffer attempts to clear the internal read buffer*/
+func (a *Arb) clearReadBuffer() {
 	//clear off any internal buffer
 	rdr := bufio.NewReader(a.idotoo)
 	for {
@@ -171,16 +169,29 @@ func (a *Arb) clearBuffer() {
 	}
 }
 
-/*Simple is a very dumb version of control IO.  It blindly sends the 'cmd' byte
-slice, and looks for success or failure byte slicked before the passed duration
-happened.  If success is non-nil and exists in the read byte slice,
-Response.Error will be nil.  If failure is non-nil and matches data read from the
-incoming byte slice, The Response.Error will be the package ErrErrorResponse*/
+/*Simple is a very dumb control IO Method. It blindly sends the 'cmd' byte[], and
+waits up to duration before giving up with an error where IsTimeout() returns true.
+The success and faulure citeria use bytes.Contains to evaluate the success / failure
+citeria, with the following exceptions If success is nil (or []byte{}), then
+there is no success criteria, and the returned response.Error is be gaurunteed
+to be ErrErrorResponse (if the failure criteria is met), an error where IsTimeout()
+returns true, or some other underlying connection error. Similarily, if failure
+is nil (or []byte{}) then there is no error criteria, and the only possible error
+types are nil (for a successful response), an error where IsTimeout() returns
+true, or some underlying connection error.   If both success and failure are nil,
+Response.Error will be either a timeout condition, or some underlying conneciton
+error.  There are corner cases where allowing for nil criteria is helpful, assuming
+that the caller is aware of the behaviour
+
+Access is serialized, and takes over control of the arbiter.  EG:
+	a, _ := agnoio.NewArbiter(...)
+	a.Simle(nil, nil, nil, 1 * time.Hour) //Blocks other a.* calls for an hour, sans connection faults
+*/
 func (a *Arb) Simple(cmd, success, failure []byte, duration time.Duration) (rsp Response) {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
-	a.clearBuffer()
+	a.clearReadBuffer()
 	start := time.Now()
 	defer func() { rsp.Duration = time.Since(start) }()
 
@@ -232,7 +243,7 @@ func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
-	a.clearBuffer()
+	a.clearReadBuffer()
 	//send off the bytes, barfing on any sort of write error
 	if n, werr := a.idotoo.Write(rawBytes); werr != nil || len(rawBytes) != n {
 		return Response{Error: werr}
