@@ -78,6 +78,7 @@ func NewNetClient(ctx context.Context, timeout time.Duration, dial string) (*Net
 		rwtimeout: 1 * time.Millisecond,
 		ctx:       nctx,
 		cancel:    cancel,
+		conn:      &net.IPConn{},
 	}
 	return nc, nc.Open()
 }
@@ -171,7 +172,7 @@ func (nc *NetClient) Write(b []byte) (int, error) {
 destruction after closing the underling transport*/
 func (nc *NetClient) Close() error {
 	nc.cancel()
-	defer func() { nc.conn = nil }()
+	//defer func() { nc.conn = nil }() //Dont set this to nil
 	if nc.conn != nil {
 		return nc.conn.Close()
 	}
