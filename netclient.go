@@ -32,8 +32,12 @@ import (
 	"time"
 )
 
-var _ IDoIO = &NetClient{}
-var netClientRe = regexp.MustCompile("^(tcp|tcp4|tcp6|udp|udp4|udp6):\\/\\/(.*:[a-zA-Z0-9]*)$")
+var (
+	_           IDoIO = &NetClient{}
+	netClientRe       = regexp.MustCompile("^(tcp|tcp4|tcp6|udp|udp4|udp6):\\/\\/(.*:[a-zA-Z0-9]*)$")
+	writeErr          = newErr(false, false, fmt.Errorf("write: broken connection"))
+	readErr           = newErr(false, false, fmt.Errorf("read: broken connection"))
+)
 
 /*NewNetClient opens a connection to remote tcpv4 host.
 dial should be in the form of: 'tcp|udp[46]{0,1}://<host>:<port>'
@@ -78,7 +82,6 @@ func NewNetClient(ctx context.Context, timeout time.Duration, dial string) (*Net
 		rwtimeout: 1 * time.Millisecond,
 		ctx:       nctx,
 		cancel:    cancel,
-		conn:      &net.IPConn{},
 	}
 	return nc, nc.Open()
 }
@@ -146,6 +149,9 @@ func (nc *NetClient) Read(b []byte) (int, error) {
 		defer nc.Close()
 		return 0, newErr(false, false, nc.ctx.Err())
 	default:
+		if nc.conn == nil {
+			return 0, readErr
+		}
 		if nc.rwtimeout > 0 {
 			nc.conn.SetReadDeadline(time.Now().Add(nc.rwtimeout))
 		}
@@ -161,6 +167,9 @@ func (nc *NetClient) Write(b []byte) (int, error) {
 		defer nc.Close()
 		return 0, newErr(false, false, nc.ctx.Err())
 	default:
+		if nc.conn == nil {
+			return 0, writeErr
+		}
 		if nc.rwtimeout > 0 {
 			nc.conn.SetWriteDeadline(time.Now().Add(nc.rwtimeout))
 		}
@@ -172,7 +181,7 @@ func (nc *NetClient) Write(b []byte) (int, error) {
 destruction after closing the underling transport*/
 func (nc *NetClient) Close() error {
 	nc.cancel()
-	//defer func() { nc.conn = nil }() //Dont set this to nil
+	defer func() { nc.conn = nil }()
 	if nc.conn != nil {
 		return nc.conn.Close()
 	}
