@@ -329,6 +329,7 @@ func (a *Arb) readUntil(dataChan chan<- status, timeout time.Duration, checkFunc
 			return
 		case Success:
 			dataChan <- status{err: nil, raw: raw}
+			return
 		}
 	}
 }
