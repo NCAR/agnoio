@@ -25,10 +25,14 @@ SOFTWARE.
 */
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/olekukonko/tablewriter"
 )
 
 /*Command represents a command represents the Command portoin of a Command-Response operation.
@@ -69,21 +73,23 @@ type Command struct {
 	Description string
 }
 
+/*sanitize turns derenders ASCII control seq to to readable equivalents*/
+func sanitize(i interface{}) string {
+	var str string
+	switch s := i.(type) {
+	case *regexp.Regexp:
+		if s == nil {
+			return "-"
+		}
+		str = s.String()
+	case string:
+		str = s
+	}
+	return strings.Replace(strings.Replace(str, "\r", "\\r", -1), "\n", "\\n", -1)
+}
+
 //String implements the Stringer interface
 func (c Command) String() string {
-	sanitize := func(i interface{}) string {
-		var str string
-		switch s := i.(type) {
-		case *regexp.Regexp:
-			if s == nil {
-				return "nil"
-			}
-			str = s.String()
-		case string:
-			str = s
-		}
-		return strings.Replace(strings.Replace(str, "\r", "\\r", -1), "\n", "\\n", -1)
-	}
 	return fmt.Sprintf("%s: %v Prototype:%q CommandRegexp:%q Expect:%q Error:%q", c.Name, c.Timeout, sanitize(c.Prototype), sanitize(c.CommandRegexp), sanitize(c.Response), sanitize(c.Error))
 }
 
@@ -122,10 +128,30 @@ type Commands map[string]Command
 
 //String implements the Stringer() interface
 func (c Commands) String() (r string) {
-	for _, val := range c {
-		r += fmt.Sprintf("%s\n", val.String())
+	cmds := sort.StringSlice{}
+	for cmd := range c {
+		cmds = append(cmds, cmd)
 	}
-	return
+	cmds.Sort()
+
+	buf := bytes.NewBufferString("")
+	tw := tablewriter.NewWriter(buf)
+	tw.SetAutoWrapText(false)
+	tw.SetHeader([]string{"Name", "Timeout", "Prototype", "Command Regex", "Resp Regex", "Error Regex"})
+
+	for _, cc := range cmds {
+		cmd := c[cc]
+		tw.Append([]string{
+			cc,
+			cmd.Timeout.String(),
+			sanitize(cmd.Prototype),
+			sanitize(cmd.CommandRegexp),
+			sanitize(cmd.Response),
+			sanitize(cmd.Error),
+		})
+	}
+	tw.Render()
+	return buf.String()
 }
 
 //JSONLabels returns a json array of the stored commands
