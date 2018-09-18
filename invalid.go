@@ -34,8 +34,17 @@ import (
 If invalid Dial strings are passed, you received one of these*/
 type InvalidIO string
 
-func (i InvalidIO) String() string            { return string(i) }
-func (i InvalidIO) Read([]byte) (int, error)  { return 0, errors.New(string(i)) }
+//String is less than helpful
+func (i InvalidIO) String() string { return string(i) }
+
+//Read always returns an error
+func (i InvalidIO) Read([]byte) (int, error) { return 0, errors.New(string(i)) }
+
+//Write always returns an error
 func (i InvalidIO) Write([]byte) (int, error) { return 0, errors.New(string(i)) }
-func (i InvalidIO) Close() error              { return fmt.Errorf("%s", i) }
-func (i InvalidIO) Open() error               { return fmt.Errorf("%s", i) }
+
+//Close always returns an error
+func (i InvalidIO) Close() error { return fmt.Errorf("%s", i) }
+
+//Open always returns an error
+func (i InvalidIO) Open() error { return fmt.Errorf("%s", i) }
