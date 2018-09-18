@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2015-2017 University Corporation for Atmospheric Research
+Copyright (c) 2015-2018 University Corporation for Atmospheric Research
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,11 +28,47 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
-	"github.com/tarm/serial"
+	"go.bug.st/serial.v1"
 )
+
+type tstport struct {
+	read, write func([]byte) (int, error)
+	close       func() error
+}
+
+func (tp *tstport) SetMode(*serial.Mode) error { return nil }
+func (tp *tstport) Read(p []byte) (int, error) {
+	if tp.read != nil {
+		return tp.read(p)
+	}
+	return 0, nil
+}
+func (tp *tstport) Write(p []byte) (int, error) {
+	if tp.write != nil {
+		return tp.write(p)
+	}
+	return 0, nil
+}
+
+func (tp *tstport) ResetInputBuffer() error  { return nil }
+func (tp *tstport) ResetOutputBuffer() error { return nil }
+func (tp *tstport) SetDTR(dtr bool) error    { return nil }
+func (tp *tstport) SetRTS(rts bool) error    { return nil }
+func (tp *tstport) GetModemStatusBits() (*serial.ModemStatusBits, error) {
+	return &serial.ModemStatusBits{}, nil
+}
+func (tp *tstport) Close() error {
+	if tp.close != nil {
+		return tp.close()
+	}
+	return nil
+}
+
+var _ = serial.Port(&tstport{})
 
 var (
 	port = flag.String("port", "", "Serial port to use as a loopback test")
@@ -115,9 +151,9 @@ func Test_SerialClient_NoConnect(t *testing.T) {
 	}
 	sc, err := NewSerialClient(ctx, 100, "serial://dontexit:57600")
 	if err == nil {
-		t.Error("Exepected an error")
+		t.Error("Expected an error")
 	}
-	sc.conn = &serial.Port{}
+	sc.conn = nil
 	_ = sc.String()
 
 	b := make([]byte, 16)
@@ -125,17 +161,18 @@ func Test_SerialClient_NoConnect(t *testing.T) {
 		t.Error("Reading a closed port should give some sort of error")
 	}
 
-	sc.conn = &serial.Port{}
+	sc.conn = nil
 	if e := sc.Open(); e == nil {
 		t.Error("Reading a closed port should give some sort of error")
 	}
 
-	sc.conn = &serial.Port{}
+	sc.conn = nil
 	if n, e := sc.Write(b); n != 0 || e == nil {
 		t.Error("Reading a closed port should give some sort of error")
 	}
-	sc.conn = &serial.Port{}
-
+	sc.conn = nil
+	conn := &tstport{close: func() error { return fmt.Errorf("cannot close close port") }}
+	sc.conn = conn
 	if e := sc.Close(); e == nil {
 		t.Error("Closing a closed port should give some sort of error")
 	}
@@ -162,14 +199,190 @@ func Test_SerialClient_NoConnect(t *testing.T) {
 	if n, e := sc.Read(b); n != 0 || e == nil {
 		t.Error("Reading a closed port should give some sort of error")
 	}
-	sc.conn = &serial.Port{}
+	sc.conn = nil
 
 	if n, e := sc.Write(b); n != 0 || e == nil {
 		t.Error("Reading a closed port should give some sort of error")
 	}
-	sc.conn = &serial.Port{}
+	sc.conn = nil
 
 	if e := sc.Close(); e == nil {
 		t.Error("Closing a closed port should give some sort of error")
+	}
+}
+
+func TestSerial_Open(t *testing.T) {
+	ctx, cncl := context.WithCancel(context.Background())
+	defer cncl()
+	sc := &tstport{
+		read:  func([]byte) (int, error) { return 0, nil },
+		write: func([]byte) (int, error) { return 0, nil },
+		close: func() error { return nil },
+	}
+	ser := &SerialClient{
+		ctx:  ctx,
+		conn: sc,
+		mode: &serial.Mode{},
+		dev:  "nope",
+	}
+	if err := ser.Open(); err == nil {
+		t.Errorf("Expected an error - no such port")
+	}
+
+	cncl()
+	if err := ser.Open(); err == nil {
+		t.Errorf("Context dead, expect an error")
+	}
+}
+
+func TestSerial_Read(t *testing.T) {
+	type x struct {
+		n    int
+		conn serial.Port
+		ctx  func() context.Context
+	}
+
+	tests := map[string]x{
+		"canceled context": x{
+			ctx: func() context.Context {
+				ctx, cncl := context.WithCancel(context.Background())
+				cncl()
+				return ctx
+			},
+		},
+		"nil connection": x{
+			ctx:  context.Background,
+			conn: nil,
+		},
+		"read 5 bytes with EOF": x{
+			ctx:  context.Background,
+			conn: &tstport{read: func([]byte) (int, error) { return 5, io.EOF }},
+			n:    5,
+		},
+		"read 6 bytes with some other error": x{
+			ctx:  context.Background,
+			conn: &tstport{read: func([]byte) (int, error) { return 6, io.ErrClosedPipe }},
+			n:    6,
+		},
+		"read 10 bytes with nil error": x{
+			ctx:  context.Background,
+			conn: &tstport{read: func([]byte) (int, error) { return 10, nil }},
+			n:    10,
+		},
+	}
+
+	for name, x := range tests {
+		t.Log(name)
+		ctx, cncl := context.WithCancel(x.ctx())
+		defer cncl()
+		ser := &SerialClient{
+			ctx:    ctx,
+			cancel: cncl,
+			conn:   x.conn,
+			mode:   &serial.Mode{},
+			dev:    "nope",
+		}
+		if n, e := ser.Read([]byte{}); n != x.n {
+			t.Log("err = ", e)
+			t.Errorf("Expected %d bytes got %d", x.n, n)
+		}
+		cncl()
+	}
+}
+
+func TestSerial_Write(t *testing.T) {
+	type x struct {
+		n    int
+		conn serial.Port
+		ctx  func() context.Context
+	}
+
+	tests := map[string]x{
+		"canceled context": x{
+			ctx: func() context.Context {
+				ctx, cncl := context.WithCancel(context.Background())
+				cncl()
+				return ctx
+			},
+		},
+		"nil connection": x{
+			ctx:  context.Background,
+			conn: nil,
+		},
+		"write 5 bytes with EOF": x{
+			ctx:  context.Background,
+			conn: &tstport{write: func([]byte) (int, error) { return 5, io.EOF }},
+			n:    5,
+		},
+		"write 6 bytes with some other error": x{
+			ctx:  context.Background,
+			conn: &tstport{write: func([]byte) (int, error) { return 6, io.ErrClosedPipe }},
+			n:    6,
+		},
+		"write 10 bytes with nil error": x{
+			ctx:  context.Background,
+			conn: &tstport{write: func([]byte) (int, error) { return 10, nil }},
+			n:    10,
+		},
+	}
+
+	for name, x := range tests {
+		t.Log(name)
+		ctx, cncl := context.WithCancel(x.ctx())
+		defer cncl()
+		ser := &SerialClient{
+			ctx:    ctx,
+			cancel: cncl,
+			conn:   x.conn,
+			mode:   &serial.Mode{},
+			dev:    "nope",
+		}
+		if n, e := ser.Write([]byte{}); n != x.n {
+			t.Log("err = ", e)
+			t.Errorf("Expected %d bytes got %d", x.n, n)
+		}
+		cncl()
+	}
+}
+
+func TestSerial_Close(t *testing.T) {
+	type x struct {
+		conn serial.Port
+		ctx  func() context.Context
+	}
+
+	tests := map[string]x{
+		"canceled context": x{
+			ctx: func() context.Context {
+				ctx, cncl := context.WithCancel(context.Background())
+				cncl()
+				return ctx
+			},
+		},
+		"nil connection": x{
+			ctx:  context.Background,
+			conn: nil,
+		},
+		"close gracefully": x{
+			ctx:  context.Background,
+			conn: &tstport{},
+		},
+	}
+
+	for name, x := range tests {
+		t.Log(name)
+		ctx, cncl := context.WithCancel(x.ctx())
+		defer cncl()
+		ser := &SerialClient{
+			ctx:    ctx,
+			cancel: cncl,
+			conn:   x.conn,
+			mode:   &serial.Mode{},
+			dev:    "nope",
+		}
+		if ser.Close(); ser.conn != nil {
+			t.Errorf("Despite errors, expected a nil sc.conn after")
+		}
+		cncl()
 	}
 }

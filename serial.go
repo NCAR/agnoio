@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2015-2017 University Corporation for Atmospheric Research
+Copyright (c) 2015-2018 University Corporation for Atmospheric Research
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -33,11 +33,21 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tarm/serial"
+	"go.bug.st/serial.v1"
 )
 
 var _ IDoIO = &SerialClient{}
 var serialRe = regexp.MustCompile("^rs232|serial:\\/\\/([^:]*):([0-9]*)$")
+
+/*SerialClient wraps around a serial port*/
+type SerialClient struct {
+	ctx     context.Context
+	cancel  context.CancelFunc
+	timeout time.Duration
+	mode    *serial.Mode
+	dev     string
+	conn    serial.Port
+}
 
 /*NewSerialClient opens a connection to a serial device in 8N1 mode.
 Dial should be in the form of "serial://<device>:<baud>*/
@@ -53,34 +63,24 @@ func NewSerialClient(ctx context.Context, timeout time.Duration, dial string) (*
 		ctx:     nctx,
 		cancel:  cancel,
 		timeout: timeout,
-		opts: &serial.Config{
-			Name:        matches[0][1],
-			Baud:        int(i),
-			ReadTimeout: timeout,
-			Size:        8,
-			Parity:      serial.ParityNone,
-			StopBits:    serial.Stop1,
+		mode: &serial.Mode{
+			BaudRate: int(i),
+			DataBits: 8,
+			Parity:   serial.NoParity,
+			StopBits: serial.OneStopBit,
 		},
-		conn: &serial.Port{},
+		dev:  matches[0][1],
+		conn: nil,
 	}
 	return sc, sc.Open()
 }
 
-/*SerialClient wraps around a serial port*/
-type SerialClient struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	timeout time.Duration
-	opts    *serial.Config
-	conn    *serial.Port
-}
-
 /*String conforms to the fmt.Stringer interface*/
 func (sc *SerialClient) String() string {
-	return fmt.Sprintf("serial connection to %v:%d 8N1", sc.opts.Name, sc.opts.Baud)
+	return fmt.Sprintf("serial connection to %v:%d 8N1", sc.dev, sc.mode.BaudRate)
 }
 
-/*Open forcible disconnects (ignore errors) the network conenction and
+/*Open forcible closes any previously open ports (ignore errors) the network conenction and
 attempts the connect process again.  It returns an error if it was unable to start*/
 func (sc *SerialClient) Open() (err error) {
 	select {
@@ -92,7 +92,7 @@ func (sc *SerialClient) Open() (err error) {
 		sc.conn.Close()
 		sc.conn = nil
 	}
-	if sc.conn, err = serial.OpenPort(sc.opts); err != nil {
+	if sc.conn, err = serial.Open(sc.dev, sc.mode); err != nil {
 		return newErr(false, false, sc.ctx.Err())
 	}
 	return nil
