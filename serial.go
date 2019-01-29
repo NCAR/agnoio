@@ -26,13 +26,13 @@ package agnoio
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"regexp"
 	"strconv"
 	"time"
 
+	"github.com/pkg/errors"
 	"go.bug.st/serial.v1"
 )
 
@@ -93,7 +93,7 @@ func (sc *SerialClient) Open() (err error) {
 		sc.conn = nil
 	}
 	if sc.conn, err = serial.Open(sc.dev, sc.mode); err != nil {
-		return newErr(false, false, err)
+		return newErr(false, false, errors.Wrapf(err, "unable to open serial device %q", sc.dev))
 	}
 	return nil
 }
