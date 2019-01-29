@@ -93,7 +93,7 @@ func (sc *SerialClient) Open() (err error) {
 		sc.conn = nil
 	}
 	if sc.conn, err = serial.Open(sc.dev, sc.mode); err != nil {
-		return newErr(false, false, sc.ctx.Err())
+		return newErr(false, false, err)
 	}
 	return nil
 }
