@@ -33,7 +33,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"go.bug.st/serial.v1"
+	"go.bug.st/serial"
 )
 
 var _ IDoIO = &SerialClient{}
