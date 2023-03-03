@@ -95,6 +95,7 @@ func (sc *SerialClient) Open() (err error) {
 	if sc.conn, err = serial.Open(sc.dev, sc.mode); err != nil {
 		return newErr(false, false, errors.Wrapf(err, "unable to open serial device %q", sc.dev))
 	}
+	sc.conn.SetReadTimeout(sc.timeout)
 	return nil
 }
 
@@ -109,8 +110,12 @@ func (sc *SerialClient) Read(b []byte) (int, error) {
 		if sc.conn == nil {
 			return 0, newErr(false, false, errors.New("broken connection"))
 		}
-
 		n, e := sc.conn.Read(b)
+		switch n {
+			case 0:
+				return n, newErr(true, true, io.EOF)
+			default:
+		}
 		switch e {
 		case nil:
 			return n, nil
