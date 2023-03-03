@@ -32,7 +32,7 @@ import (
 	"testing"
 	"time"
 
-	"go.bug.st/serial.v1"
+	"go.bug.st/serial"
 )
 
 type tstport struct {

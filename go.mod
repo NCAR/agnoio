@@ -6,7 +6,6 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pkg/errors v0.9.1
 	go.bug.st/serial v1.5.0
-	go.bug.st/serial.v1 v0.0.0-20191202182710-24a6610f0541
 )
 
 require (
