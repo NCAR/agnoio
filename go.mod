@@ -1,4 +1,4 @@
-module github.com/NCAR/ACS
+module github.com/NCAR/agnoio
 
 go 1.17
 

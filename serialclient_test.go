@@ -67,6 +67,8 @@ func (tp *tstport) Close() error {
 	}
 	return nil
 }
+func (tp *tstport) SetReadTimeout(time.Duration) error { return nil }
+func (tp *tstport) Break(time.Duration) error { return nil }
 
 var _ = serial.Port(&tstport{})
 
