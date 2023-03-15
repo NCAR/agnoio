@@ -110,7 +110,7 @@ func (sc *SerialClient) Read(b []byte) (int, error) {
 		return 0, newErr(false, false, sc.ctx.Err())
 	default:
 		if sc.conn == nil {
-			if sc.Open != nil {
+			if sc.Open() != nil {
 				return 0, newErr(false, false, errors.New("broken connection, unable to reopen serial device"))
 			}
 		}
@@ -140,7 +140,7 @@ func (sc *SerialClient) Write(b []byte) (int, error) {
 		return 0, newErr(false, false, sc.ctx.Err())
 	default:
 		if sc.conn == nil {
-			if sc.Open != nil {
+			if sc.Open() != nil {
 				return 0, newErr(false, false, errors.New("broken connection, unable to reopen serial device"))
 			}
 		}
