@@ -44,6 +44,7 @@ type SerialClient struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	timeout time.Duration
+	rwtimeout time.Duration
 	mode    *serial.Mode
 	dev     string
 	conn    serial.Port
@@ -63,6 +64,7 @@ func NewSerialClient(ctx context.Context, timeout time.Duration, dial string) (*
 		ctx:     nctx,
 		cancel:  cancel,
 		timeout: timeout,
+		rwtimeout: 1 * time.Millisecond,
 		mode: &serial.Mode{
 			BaudRate: int(i),
 			DataBits: 8,
@@ -95,7 +97,7 @@ func (sc *SerialClient) Open() (err error) {
 	if sc.conn, err = serial.Open(sc.dev, sc.mode); err != nil {
 		return newErr(false, false, errors.Wrapf(err, "unable to open serial device %q", sc.dev))
 	}
-	sc.conn.SetReadTimeout(sc.timeout)
+	sc.conn.SetReadTimeout(sc.rwtimeout)
 	return nil
 }
 
@@ -108,7 +110,9 @@ func (sc *SerialClient) Read(b []byte) (int, error) {
 		return 0, newErr(false, false, sc.ctx.Err())
 	default:
 		if sc.conn == nil {
-			return 0, newErr(false, false, errors.New("broken connection"))
+			if sc.Open != nil {
+				return 0, newErr(false, false, errors.New("broken connection, unable to reopen serial device"))
+			}
 		}
 		n, e := sc.conn.Read(b)
 		switch n {
@@ -136,7 +140,9 @@ func (sc *SerialClient) Write(b []byte) (int, error) {
 		return 0, newErr(false, false, sc.ctx.Err())
 	default:
 		if sc.conn == nil {
-			return 0, newErr(false, false, errors.New("broken connection"))
+			if sc.Open != nil {
+				return 0, newErr(false, false, errors.New("broken connection, unable to reopen serial device"))
+			}
 		}
 		n, e := sc.conn.Write(b)
 		switch e {
