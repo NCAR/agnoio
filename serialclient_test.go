@@ -76,7 +76,7 @@ var (
 	port = flag.String("port", "", "Serial port to use as a loopback test")
 )
 
-func TestMain(t *testing.T) {
+func TestMain(m *testing.M) {
 	flag.Parse()
 }
 
