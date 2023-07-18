@@ -156,7 +156,7 @@ func TestArb_Simple(t *testing.T) {
 	cancel() //kill context chain, call write, exepct error
 
 	if resp := a.Simple(nil, nil, nil, 300*time.Millisecond); resp.Error == nil {
-		t.Error("Excepted the context to be dead and an error to propegate")
+		t.Error("Expected the context to be dead and an error to propagate")
 	}
 }
 
@@ -214,7 +214,7 @@ func TestArb_Control(t *testing.T) {
 		if i, e := a.Write([]byte("dead cat bounce")); i != 15 || e != nil {
 			t.Log("Wrote expecting 15 bytes out: only ", i)
 			t.Log("Err is ", e)
-			t.Error("Unable to fill bufffer")
+			t.Error("Unable to fill buffer")
 			t.FailNow()
 		}
 	}
@@ -230,20 +230,22 @@ func TestArb_Control(t *testing.T) {
 	if resp := a.Control(arbCmdTimeout); resp.Error == nil || !bytes.Equal(resp.Bytes, []byte("Rxd>3")) {
 		t.Log("Got err", resp.Error)
 		t.Log("Got Bytes", string(resp.Bytes))
-		t.Error("Expected a non-nill error due to a timeout")
+		t.Error("Expected a non-nil error due to a timeout")
 		t.FailNow()
 	}
 
 	if resp := a.Control(arbCmdError); resp.Error == nil || !bytes.Equal(resp.Bytes, []byte("Rxd>3")) {
 		t.Log("Got err", resp.Error)
 		t.Log("Got Bytes", string(resp.Bytes))
-		t.Error("Expected a non-nill error due to a timeout")
+		t.Error("Expected a non-nil error due to a timeout")
 		t.FailNow()
 	}
 }
 
-/*The following checks broken contexts - which are a bit simpler, but trickier,
-to fully validate*/
+/*
+The following checks broken contexts - which are a bit simpler, but trickier,
+to fully validate
+*/
 func TestArb_Contexts(t *testing.T) {
 	_, srvdial, dial := randPortCfg()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -275,12 +277,12 @@ func TestArb_Contexts(t *testing.T) {
 		t.Errorf("Select on cancelled ctx should return quickly")
 	}
 
-	//now, kill idotoo's contrxt, which should fail writes
+	//now, kill idotoo's context, which should fail writes
 	idocncl()
 	if resp := arb.Control(arbCmdTimeout); resp.Error == nil || !bytes.Equal([]byte{}, resp.Bytes) || resp.Duration > 20*time.Millisecond {
 		t.Log("Bytes should be [], is", resp.Bytes, bytes.Equal([]byte{}, resp.Bytes))
 		t.Log("Duration should < 20ms, is", resp.Duration)
-		t.Errorf("SHould get an error when trying to send")
+		t.Errorf("Should get an error when trying to send")
 	}
 
 	st := make(chan status, 0)

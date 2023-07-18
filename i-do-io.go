@@ -32,14 +32,16 @@ import (
 	"time"
 )
 
-/*IDoIO is a generic interface agnostic io devices should conforms to. An IDoIO
-should be able to tell others in some human readable string form what the
-transport actually is (fmt.Stringer). An IDoIO should alow be able to read,
+/*
+IDoIO is a generic interface agnostic io devices should conform to. An IDoIO
+should be able to tell others in some human-readable string form what the
+transport actually is (fmt.Stringer). An IDoIO should be able to read,
 and write byte slices (io.ReadWriter), and also should be able to Open and Close
 the device as will.  This does mean that once created, an IDoIO needs to cache
-and properly deal with opening critera.
+and properly deal with opening criteria.
 
-Any error returned must be castable to net.Error*/
+Any error returned must be castable to net.Error
+*/
 type IDoIO interface {
 	fmt.Stringer
 	io.ReadWriter

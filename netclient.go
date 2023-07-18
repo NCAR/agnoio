@@ -39,35 +39,35 @@ var (
 	readErr           = newErr(false, false, fmt.Errorf("read: broken connection"))
 )
 
-/*NewNetClient opens a connection to remote tcpv4 host.
+/*
+NewNetClient opens a connection to remote tcpv4 host.
 dial should be in the form of: 'tcp|udp[46]{0,1}://<host>:<port>'
 
 Timeout is used a read/write timeout at the socket level. If timeout is zero,
 timeouts are not used nor applied, and any errors are due to normal socket behaviour.
 If timeout is greater than zero, a deadline is set on every Read() and Write()
-function. In this case, Read() and Write() will returns an timeout error that
+function. In this case, Read() and Write() will return a timeout error that
 should be checked via something like the following:
 
-  io := NewNetClient(ctx, 100 * time.Millisecond, "tcp://localhost:4242")
-  ...
-  n, e := io.Write(b)
-  switch e {
-  case io.EOF: // Broken socket
-    ...
-  default:
-    if nerr, ok := e.(net.Error); ok {
-      if nerr.Temporary() { //Temporary error
-        ...
-      }
-      if nerr.Timeout() { //Timeout error from enforced deadline
-        ...
-      }
-    }
-  }
+	io := NewNetClient(ctx, 100 * time.Millisecond, "tcp://localhost:4242")
+	...
+	n, e := io.Write(b)
+	switch e {
+	case io.EOF: // Broken socket
+	  ...
+	default:
+	  if nerr, ok := e.(net.Error); ok {
+	    if nerr.Temporary() { //Temporary error
+	      ...
+	    }
+	    if nerr.Timeout() { //Timeout error from enforced deadline
+	      ...
+	    }
+	  }
+	}
 
-The caller is responsible for handling errors. This pkg just propegates any error
+The caller is responsible for handling errors. This pkg just propagates any error
 encountered.
-
 */
 func NewNetClient(ctx context.Context, timeout time.Duration, dial string) (*NetClient, error) {
 	if !netClientRe.MatchString(dial) {
@@ -86,16 +86,16 @@ func NewNetClient(ctx context.Context, timeout time.Duration, dial string) (*Net
 	return nc, nc.Open()
 }
 
-/*NetClient provides a implementer of the IDoIO interface.  It provides
+/*
+NetClient provides an implementer of the IDoIO interface.  It provides
 access under the following URI Regimes:
-  tcp://
-  tcp4://
-  tcp6://
-  udp://
-  udp4://
-  udp6://
 
-
+	tcp://
+	tcp4://
+	tcp6://
+	udp://
+	udp4://
+	udp6://
 */
 type NetClient struct {
 	network, address string
@@ -106,17 +106,21 @@ type NetClient struct {
 	conn             net.Conn
 }
 
-/*String conforms to the fmt.Stringer interface.  Prints something like
+/*
+String conforms to the fmt.Stringer interface.  Prints something like
 
 	tcp6 connection to tcp6://localhost::8080
 
-which meant as a human comprehendable explaination of the connection*/
+which meant as a human comprehendable explanation of the connection
+*/
 func (nc *NetClient) String() string {
 	return fmt.Sprintf("%v connection to %v", nc.network, nc.address)
 }
 
-/*Open forcible disconnects (ignore errors) the network conenction and
-attempts the connect process again.  It returns an error if it was unable to start*/
+/*
+Open forcible disconnects (ignore errors) the network connection and
+attempts the connect process again.  It returns an error if it was unable to start
+*/
 func (nc *NetClient) Open() (err error) {
 	select {
 	case <-nc.ctx.Done():
@@ -136,13 +140,15 @@ func (nc *NetClient) Open() (err error) {
 		KeepAlive: 1 * time.Second,
 		Resolver:  nil,
 	}
-	//Errors from DialContext implent net.Error
+	//Errors from DialContext implement net.Error
 	nc.conn, err = dialer.DialContext(nc.ctx, nc.network, nc.address)
 	return
 }
 
-/*Read conforms to io.Writer, but immediately returns upon ctx
-destruction after closing the underling transport*/
+/*
+Read conforms to io.Writer, but immediately returns upon ctx
+destruction after closing the underlying transport
+*/
 func (nc *NetClient) Read(b []byte) (int, error) {
 	select {
 	case <-nc.ctx.Done():
@@ -159,8 +165,10 @@ func (nc *NetClient) Read(b []byte) (int, error) {
 	}
 }
 
-/*Write conforms to io.Writer, but immediately returns upon ctx
-destruction after closing the underling transport*/
+/*
+Write conforms to io.Writer, but immediately returns upon ctx
+destruction after closing the underlying transport
+*/
 func (nc *NetClient) Write(b []byte) (int, error) {
 	select {
 	case <-nc.ctx.Done():
@@ -177,8 +185,10 @@ func (nc *NetClient) Write(b []byte) (int, error) {
 	}
 }
 
-/*Close conforms to io.Closer, but immediately returns upon ctx
-destruction after closing the underling transport*/
+/*
+Close conforms to io.Closer, but immediately returns upon ctx
+destruction after closing the underlying transport
+*/
 func (nc *NetClient) Close() error {
 	nc.cancel()
 	defer func() { nc.conn = nil }()

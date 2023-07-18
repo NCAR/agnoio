@@ -50,15 +50,17 @@ const (
 	Success
 )
 
-/*CheckFunc is used to determine if the passed bytes match some success, failure,
-or insuccifient data to determine exit criteria. Only the defined ExitCriteria
+/*
+CheckFunc is used to determine if the passed bytes match some success, failure,
+or insufficient data to determine exit criteria. Only the defined ExitCriteria
 may be used - any other return value will panic.  If the CheckFunc returns
 Insufficient, it is assumed that more incoming data is required before a success
 or failure criteria can be established. If Failure is returned, it is assumed
 that the sum of the bytes demarcates a failure condition, and the calling process
 should cease reading data.  Likewise, a Success condition indicates a successful
 exit criteria, and the calling process should cease reading data and return a nil
-error.*/
+error.
+*/
 type CheckFunc func([]byte) ExitCriteria
 
 /*
@@ -67,49 +69,56 @@ design intentions were to provide a way to communicate to devices that respond
 to 'commands' sent over the wire. Functionally, this can be seen as a socket or
 generic IO wrapper to provide a way to read and write commands and data. As a
 sanity, there can only be one caller, as this is purposefully not safe from
-mutliple callers via the standard "go <func>" syntax.  Any errors that are not
+multiple callers via the standard "go <func>" syntax.  Any errors that are not
 ErrTimeout or ErrBusy are errors coming from the underlying layers and are to
-be delt with*/
+be dealt with
+*/
 type Arbiter interface {
 	IDoIO //I Do Too
 
 	/*Simple is a very simple form of command and control.  It sends out cmd,
-	making sure all the bytes get pushed out, and the constantly reads the incoming
-	data for any a sequence that contains either 'ok' or 'failure' before timing
-	out at the passed duration. The returned response contains the duration,
-	the bytes received, and an error, which is nil if the ok sequence was
-	detected, or a non-nil error*/
+	  making sure all the bytes get pushed out, and then constantly reads the incoming
+	  data for any a sequence that contains either 'ok' or 'failure' before timing
+	  out at the passed duration. The returned response contains the duration,
+	  the bytes received, and an error, which is nil if the ok sequence was
+	  detected, or a non-nil error*/
 	Simple(cmd, ok, failure []byte, duration time.Duration) Response
 
 	/*Control forms a byte slice to write out on the wire by combining cmd with
-	args, and sans error, will write the formed byte slice out on the wire. It
-	should block until either its internal buffer matches cmd.Response, cmd.Error,
-	or the process takes longer than cmd.Timeout. The returned Response should be
-	populated correctly as described in the Response docstring*/
+	  args, and sans error, will write the formed byte slice out on the wire. It
+	  should block until either its internal buffer matches cmd.Response, cmd.Error,
+	  or the process takes longer than cmd.Timeout. The returned Response should be
+	  populated correctly as described in the Response docstring*/
 	Control(cmd Command, args ...interface{}) Response
 }
 
-/*NewArbiter returns an opened Arbiter from the passed dial string, ctx, and timeout.
+/*
+NewArbiter returns an opened Arbiter from the passed dial string, ctx, and timeout.
 dial will need to match a known dial format, timeout will be used during the connection
 process, and the ctx will be used to ensure the operation will cease if the ctx is
-stopped.*/
+stopped.
+*/
 func NewArbiter(ctx context.Context, timeout time.Duration, dial string) (Arbiter, error) {
 	idotoo, err := NewIDoIO(ctx, timeout, dial)
 	arb, _ := Arbitrate(ctx, idotoo)
 	return arb, err
 }
 
-/*Arbitrate returns an Arbiter and a context.CancelFunc.  This is meant to be a
+/*
+Arbitrate returns an Arbiter and a context.CancelFunc.  This is meant to be a
 temporary solution, where the arbiter is meant to be used for a short duration
 and then revert to using the IDoIO. The CancelFunc should be called whenever
-the caller is done using the Arbiter Functionally (eg, .Control).*/
+the caller is done using the Arbiter functionally (eg, .Control).
+*/
 func Arbitrate(ctx context.Context, idoio IDoIO) (Arbiter, context.CancelFunc) {
 	arbctx, cancelfunc := context.WithCancel(ctx)
 	return &Arb{ctx: arbctx, idotoo: idoio, cancel: cancelfunc}, cancelfunc
 }
 
-/*Arb is a wrapper over a IDoIO, but it lockes the IDoIO under a mutex to
-serialize access.*/
+/*
+Arb is a wrapper over a IDoIO, but it locks the IDoIO under a mutex to
+serialize access.
+*/
 type Arb struct {
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -117,23 +126,29 @@ type Arb struct {
 	idotoo IDoIO
 }
 
-/*String  conforms to IDoIO, but for an Arbiter. It usually returns something
-like "Arbiter over <idoio>", where <idoio> is the Stringer variant of the underling IDoIO*/
+/*
+String  conforms to IDoIO, but for an Arbiter. It usually returns something
+like "Arbiter over <idoio>", where <idoio> is the Stringer variant of the underlying IDoIO
+*/
 func (a *Arb) String() string {
 	return fmt.Sprintf("Arbiter over %v", a.idotoo)
 }
 
-/*Open conforms to IDoIO, but for an Arbiter.  Unlike a regular IDoIO, access is
-locked within a mutex, and the read and write channels are linked / bonded*/
+/*
+Open conforms to IDoIO, but for an Arbiter.  Unlike a regular IDoIO, access is
+locked within a mutex, and the read and write channels are linked / bonded
+*/
 func (a *Arb) Open() error {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 	return a.idotoo.Open()
 }
 
-/*Close conforms to IDoIO and io.Closer, but for an Arbiter. Unlike a regular
+/*
+Close conforms to IDoIO and io.Closer, but for an Arbiter. Unlike a regular
 IDoIO, access is locked within a mutex, and the read and write channels are
-linked / bonded*/
+linked / bonded
+*/
 func (a *Arb) Close() error {
 	a.cancel()
 	a.mux.Lock()
@@ -141,16 +156,20 @@ func (a *Arb) Close() error {
 	return a.idotoo.Close()
 }
 
-/*Read conforms to IDoIO, io.Reader, but for an Arbiter. Unlike a regular IDoIO,
-access is locked within a mutex, and the read and write channels are linked / bonded*/
+/*
+Read conforms to IDoIO, io.Reader, but for an Arbiter. Unlike a regular IDoIO,
+access is locked within a mutex, and the read and write channels are linked / bonded
+*/
 func (a *Arb) Read(b []byte) (int, error) {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 	return a.idotoo.Read(b)
 }
 
-/*Write conforms to IDoIO, io.Writer, but for an Arbiter. Unlike a regular IDoIO,
-access is locked within a mutex, and the read and write channels are linked / bonded*/
+/*
+Write conforms to IDoIO, io.Writer, but for an Arbiter. Unlike a regular IDoIO,
+access is locked within a mutex, and the read and write channels are linked / bonded
+*/
 func (a *Arb) Write(b []byte) (int, error) {
 	a.mux.Lock()
 	defer a.mux.Unlock()
@@ -169,23 +188,25 @@ func (a *Arb) clearReadBuffer() {
 	}
 }
 
-/*Simple is a very dumb control IO Method. It blindly sends the 'cmd' byte[], and
+/*
+Simple is a very dumb control IO Method. It blindly sends the 'cmd' byte[], and
 waits up to duration before giving up with an error where IsTimeout() returns true.
-The success and faulure citeria use bytes.Contains to evaluate the success / failure
-citeria, with the following exceptions If success is nil (or []byte{}), then
-there is no success criteria, and the returned response.Error is be gaurunteed
+The success and failure criteria use bytes.Contains to evaluate the success / failure
+criteria, with the following exceptions. If success is nil (or []byte{}), then
+there is no success criteria, and the returned response.Error is guaranteed
 to be ErrErrorResponse (if the failure criteria is met), an error where IsTimeout()
-returns true, or some other underlying connection error. Similarily, if failure
+returns true, or some other underlying connection error. Similarly, if failure
 is nil (or []byte{}) then there is no error criteria, and the only possible error
 types are nil (for a successful response), an error where IsTimeout() returns
-true, or some underlying connection error.   If both success and failure are nil,
-Response.Error will be either a timeout condition, or some underlying conneciton
+true, or some underlying connection error. If both success and failure are nil,
+Response.Error will be either a timeout condition, or some underlying connection
 error.  There are corner cases where allowing for nil criteria is helpful, assuming
 that the caller is aware of the behaviour
 
 Access is serialized, and takes over control of the arbiter.  EG:
+
 	a, _ := agnoio.NewArbiter(...)
-	a.Simle(nil, nil, nil, 1 * time.Hour) //Blocks other a.* calls for an hour, sans connection faults
+	a.Simple(nil, nil, nil, 1 * time.Hour) //Blocks other a.* calls for an hour, sans connection faults
 */
 func (a *Arb) Simple(cmd, success, failure []byte, duration time.Duration) (rsp Response) {
 	a.mux.Lock()
@@ -213,24 +234,25 @@ func (a *Arb) Simple(cmd, success, failure []byte, duration time.Duration) (rsp 
 		return Insufficient
 	}
 
-	// part of the contact of readUntil is that we must read from the passed channel.
+	// part of the contract of readUntil is that we must read from the passed channel.
 	// It will write the necessary data if the ctx collapses.
 	go a.readUntil(dataChan, duration, cf)
 	d := <-dataChan
 	return Response{Error: d.err, Bytes: d.raw}
 }
 
-/*Control conforms to Arbiter interface, but this implementation uses a IDoIO to
-handles the data. Control is the reason that serialzed access is required:  when
+/*
+Control conforms to Arbiter interface, but this implementation uses a IDoIO to
+handles the data. Control is the reason that serialized access is required:  when
 Commands are sent, Control needs to read all the incoming data while Checking
 for a valid Response.
 
 If .CommandRegexp is nil, whatever command is formed is not checked for
 completeness (see Command.Bytes) If .Error is nil (not set), then the output is
 not compared for an error condition, and the command will only succeed or
-timeout. If .Response is nil (not set), then the output is not compared for an
-positive repsonse, and Command will only fail or timeout.  If bother .Error and
-.Response are nil, this command will only timeout. The response.Error will be
+timeout. If .Response is nil (not set), then the output is not compared for a
+positive response, and Command will only fail or timeout.  If both .Error and
+.Response are nil, this command will only time out. The response.Error will be
 the package ErrErrorResponse if the Error condition is matched
 */
 func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
@@ -265,7 +287,7 @@ func (a *Arb) Control(cmd Command, args ...interface{}) (rsp Response) {
 		return Insufficient
 	}
 
-	// part of the contact of readUntil is that we must read from the passed channel.
+	// part of the contract of readUntil is that we must read from the passed channel.
 	// It will write the necessary data if the ctx collapses.
 	go a.readUntil(dataChan, cmd.Timeout, cf)
 	d := <-dataChan
@@ -278,7 +300,8 @@ type status struct {
 	err error
 }
 
-/*readUntil repeatedly reads data off the embedded io device until either a
+/*
+readUntil repeatedly reads data off the embedded io device until either a
 duration of timeout elapses, or checkFunc returns either Success or Failure.
 Caller should utilize a go-routine to issue this and should always read from
 the passed channel exactly one time, otherwise this will deadlock. This closes

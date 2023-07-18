@@ -33,7 +33,7 @@ import (
 )
 
 func TestCommand_Bytes(t *testing.T) {
-	//test Variadic Bytes
+	//test variadic Bytes
 
 	singular := Command{
 		Name:          "ping",
@@ -142,7 +142,7 @@ func TestCommands_String(t *testing.T) {
 			Response:      regexp.MustCompile(""),
 		},
 	}
-	t.Log("Does the following look reasaonable for lots of commands?")
+	t.Log("Does the following look reasonable for lots of commands?")
 	is := cmds.String()
 	t.Log(is)
 	if len(is) == 0 {

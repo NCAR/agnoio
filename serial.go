@@ -49,8 +49,10 @@ type SerialClient struct {
 	conn    serial.Port
 }
 
-/*NewSerialClient opens a connection to a serial device in 8N1 mode.
-Dial should be in the form of "serial://<device>:<baud>*/
+/*
+NewSerialClient opens a connection to a serial device in 8N1 mode.
+Dial should be in the form of "serial://<device>:<baud>
+*/
 func NewSerialClient(ctx context.Context, timeout time.Duration, dial string) (*SerialClient, error) {
 	if !serialRe.MatchString(dial) {
 		return nil, newErr(false, false, fmt.Errorf("dial string not in correct form"))
@@ -80,8 +82,10 @@ func (sc *SerialClient) String() string {
 	return fmt.Sprintf("serial connection to %v:%d 8N1", sc.dev, sc.mode.BaudRate)
 }
 
-/*Open forcible closes any previously open ports (ignore errors) the network conenction and
-attempts the connect process again.  It returns an error if it was unable to start*/
+/*
+Open forcible closes any previously open ports (ignore errors) the network connection and
+attempts the connect process again.  It returns an error if it was unable to start
+*/
 func (sc *SerialClient) Open() (err error) {
 	select {
 	case <-sc.ctx.Done():
@@ -99,8 +103,10 @@ func (sc *SerialClient) Open() (err error) {
 	return nil
 }
 
-/*Read conforms to io.Writer, but immediately returns upon ctx
-destruction after closing the underling transport*/
+/*
+Read conforms to io.Writer, but immediately returns upon ctx
+destruction after closing the underlying transport
+*/
 func (sc *SerialClient) Read(b []byte) (int, error) {
 	select {
 	case <-sc.ctx.Done():
@@ -112,9 +118,9 @@ func (sc *SerialClient) Read(b []byte) (int, error) {
 		}
 		n, e := sc.conn.Read(b)
 		switch n {
-			case 0:
-				return n, newErr(true, true, io.EOF)
-			default:
+		case 0:
+			return n, newErr(true, true, io.EOF)
+		default:
 		}
 		switch e {
 		case nil:
@@ -127,8 +133,10 @@ func (sc *SerialClient) Read(b []byte) (int, error) {
 	}
 }
 
-/*Write conforms to io.Writer, but immediately returns upon ctx
-destruction after closing the underling transport*/
+/*
+Write conforms to io.Writer, but immediately returns upon ctx
+destruction after closing the underlying transport
+*/
 func (sc *SerialClient) Write(b []byte) (int, error) {
 	select {
 	case <-sc.ctx.Done():
@@ -150,8 +158,10 @@ func (sc *SerialClient) Write(b []byte) (int, error) {
 	}
 }
 
-/*Close conforms to io.Closer, but immediately returns upon ctx
-destruction after closing the underling transport*/
+/*
+Close conforms to io.Closer, but immediately returns upon ctx
+destruction after closing the underlying transport
+*/
 func (sc *SerialClient) Close() error {
 	defer func() { sc.conn = nil }()
 	select {
